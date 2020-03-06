@@ -51,6 +51,8 @@ struct printf_arg
     union values_u {
         char character;
         char* string;
+        wchar_t wchar;
+        wchar_t* wstring;
         void* pointer;
 
         intmax_t integer;
@@ -61,10 +63,20 @@ struct printf_arg
         // ----
         void set(char c) { character = c; }
         void set(char* s) { string = s; }
+        void set(wchar_t c) { wchar = c; }
+        void set(wchar_t* s) { wstring = s; }
         void set(intmax_t i) { integer = i; }
         void set(uintmax_t i) { unsigned_integer = i; }
         void set(long double d) { floatpt = d; }
         void set(void* p) { pointer = p; }
+        // ----
+
+        template<typename T>
+        values_u(T value) {
+            set(value);
+        }
+
+        values_u() = default;
     };
 
 
@@ -236,7 +248,6 @@ public:
     pf_ctype() : ctype(make_table()) {}
 };
 
-
 struct stream_state
 {
     ios::fmtflags flags;
@@ -270,7 +281,7 @@ auto find_first_of(R1&& a, R2&& b) {
     return std::find_first_of(begin(a), end(a), begin(b), end(b));
 }
 
-static void parsefmt(std::ostream& outs, printf_arg& info, va_list va);
+static void parsefmt(std::ostream& outs, printf_arg& info, va_list& va);
 
 std::ostream& red::do_printf(std::istream& fmtss, std::ostream& outs, const std::locale& locale, va_list va)
 {
@@ -309,209 +320,6 @@ std::ostream& red::do_printf(std::istream& fmtss, std::ostream& outs, const std:
 
             outs << info;
         }
-        /* else {
-            // start of fmt spec
-            fmtss.imbue(locale_sep);
-            fmtss >> spec;
-            fmtss.imbue(locale);
-
-            auto it = info.fmtspec.cbegin();
-
-            // look for flags (optional)
-            switch (*it++)
-            {
-            case '-': // left justify
-                outs << std::left;
-                break;
-            case '+': // show positive sign
-                outs.setf(ios::showpos);
-                break;
-            case ' ': // Use a blank to prefix the output value if it is signed and positive, ignored if '+' is also set
-                if ((outs.flags() & ios::showpos) != ios::showpos) {
-                    info.blankpfx = true;
-                }
-                break;
-            case '#':
-                outs.setf(ios::showbase);
-                break;
-            case '0': // zero fill
-                outs.fill('0');
-                break;
-
-            default: // no flags
-                it--;
-                break;
-            }
-
-            // get field width (optional)
-            if (*it == '*') {
-                auto fw = va_arg(va, uint32_t);
-                outs.width(fw);
-                it++;
-            }
-            else if (std::isdigit(*it, locale)) {
-                int fw; size_t converted;
-                auto pos = std::distance(cbegin(info.fmtspec), it);
-
-                try {
-                    fw = std::stoi(info.fmtspec.substr(pos), &converted);
-                    outs.width(fw);
-                    it += converted;
-                }
-                catch (const std::exception&) {
-                    // no conversion took place
-                }
-            }
-
-            // get precision (optional)
-            if (*it == '.') {
-                it++;
-                if (*it == '*') {
-                    auto pr = va_arg(va, uint32_t);
-                    outs.precision(pr);
-                    it++;
-                }
-                else if (std::isdigit(*it, locale)) {
-                    int pr; size_t converted;
-                    auto pos = std::distance(cbegin(info.fmtspec), it);
-                    try {
-                        pr = std::stoi(info.fmtspec.substr(pos), &converted);
-                        outs.precision(pr);
-                        it += converted;
-                    }
-                    catch (const std::exception&) {
-                        // no conversion took place
-                    }
-                }
-            }
-
-            // handle size overrides (optional)
-            // this decides between int32/int64, double/long double
-            switch (*it++)
-            {
-            case 'h': // halfwidth
-                info.mod = arg_e::narrow;
-                if (it[0] == 'h')
-                    it++; // QUARTERWIDTH
-                break;
-            case 'l':  // are we 64-bit (unix style)
-                if (it[0] == 'l') {
-                    info.mod = arg_e::wide;
-                    it += 1;
-                } else {
-                    info.mod = sizeof(long) == 8 ? arg_e::wide : arg_e::narrow;
-                }
-            case 'j': // are we 64-bit on intmax_t? (c99)
-                info.mod = sizeof(size_t) == 8 ? arg_e::wide : arg_e::narrow;
-                break;
-            case 'z': // are we 64-bit on size_t or ptrdiff_t? (c99)
-            case 't':
-                info.mod = sizeof(ptrdiff_t) == 8 ? arg_e::wide : arg_e::narrow;
-                break;
-            case 'I': // are we 64-bit (msft style)
-                if (it[0] == '6' && it[1] == '4') {
-                    info.mod = arg_e::wide;
-                    it++;
-                }
-                else if (it[0] == '3' && it[1] == '2') {
-                    info.mod = sizeof(void*) == 8 ? arg_e::wide : arg_e::narrow;
-                    it++;
-                }
-                break;
-            default: // no size
-                it--;
-                break;
-            }
-
-            // handle type
-            switch (*it)
-            {
-            case 'C': // wide char (not implemented)
-                info.mod = arg_e::wide;
-            case 'c': // char
-                info.type = arg_e::t_char;
-                info.value.set(va_arg(va, char));
-                break;
-            case 'u': // Unsigned decimal integer
-                outs << std::dec;
-                info.setprops(arg_e::t_integer, arg_e::s_unsigned);
-                info.value.set(va_arg(va, uintmax_t));
-                break;
-            case 'd': // Signed decimal integer
-            case 'i':
-                outs << std::dec;
-                info.setprops(arg_e::t_integer, arg_e::s_signed);
-                info.value.set(va_arg(va, intmax_t));
-                break;
-            case 'o': // Unsigned octal integer
-                outs << std::oct;
-                info.setprops(arg_e::t_integer, arg_e::s_unsigned);
-                info.value.set(va_arg(va, uintmax_t));
-                break;
-            case 'X': // Unsigned hexadecimal integer w/ uppercase letters
-                outs.setf(ios::uppercase);
-            case 'x': // Unsigned hexadecimal integer w/ lowercase letters
-                outs << std::hex;
-                info.setprops(arg_e::t_integer, arg_e::s_unsigned);
-                info.value.set(va_arg(va, uintmax_t));
-                break;
-            case 'E': // float, scientific notation
-                outs.setf(ios::uppercase);
-            case 'e': {
-                outs << std::scientific;
-                auto a = va_arg(va, long double);
-                info.setprops(arg_e::t_floating_pt, a >= 0);
-                info.value.set(a);
-            }
-                break;
-            case 'F': // float, fixed notation
-                outs.setf(ios::uppercase);
-            case 'f': {
-                outs << std::fixed;
-                auto a = va_arg(va, long double);
-                info.setprops(arg_e::t_floating_pt, a >= 0);
-                info.value.set(a);
-            }
-                break;
-            case 'G': // float, general notation
-                outs.setf(ios::uppercase);
-            case 'g': {
-                outs << std::defaultfloat;
-                auto a = va_arg(va, long double);
-                info.setprops(arg_e::t_floating_pt, a >= 0);
-                info.value.set(a);
-            }
-                break;
-            case 'A': // hex float
-            case 'a': {
-                outs << std::hexfloat;
-                auto a = va_arg(va, long double);
-                info.setprops(arg_e::t_floating_pt, a >= 0);
-                info.value.set(a);
-            }
-                break;
-            case 'p': // pointer
-                outs << std::hex;
-                info.type = arg_e::t_pointer;
-                info.value.set(va_arg(va, void*));
-                break;
-            case 'S':
-            case 's': // string
-                info.type = arg_e::t_string;
-                info.value.set(va_arg(va, char*));
-                break;
-            case 'n': // weird write-bytes specifier (not implemented)
-                info.value.set(va_arg(va, void*));
-                info.type = arg_e::t_byteswriten;
-                break;
-            default: // unknown
-                info.type = arg_e::t_invalid;
-                break;
-            }
-
-            // we have all the info we need, print the arg
-            info.put(outs);
-        }*/
 
         ss_state.restore(outs);
     }
@@ -519,7 +327,7 @@ std::ostream& red::do_printf(std::istream& fmtss, std::ostream& outs, const std:
     return outs;
 }
 
-void parsefmt(std::ostream& outs, printf_arg& info, va_list va)
+void parsefmt(std::ostream& outs, printf_arg& info, va_list& va)
 {
     const char chFlags[] = "-+ #0";
     const char chSizes[] = "hljztI";
@@ -652,8 +460,11 @@ void parsefmt(std::ostream& outs, printf_arg& info, va_list va)
     {
         switch (info.fmtspec[i])
         {
-        case 'C': // wide char
+        case 'C': // wide char TODO
             info.mod = info.wide;
+            info.type = info.t_char;
+            info.value = va_arg(va, wchar_t);
+            break;
         case 'c': // char
             info.type = info.t_char;
             info.value.set(va_arg(va, char));
@@ -695,7 +506,7 @@ void parsefmt(std::ostream& outs, printf_arg& info, va_list va)
             outs << std::fixed;
             auto a = va_arg(va, long double);
             info.setprops(info.t_floating_pt, a >= 0);
-            info.value.set(a);
+            info.value = a;
         } break;
         case 'G': // float, general notation
             outs.setf(ios::uppercase);
@@ -719,6 +530,9 @@ void parsefmt(std::ostream& outs, printf_arg& info, va_list va)
             break;
         case 'S': // wide string TODO
             info.mod = info.wide;
+            info.type = info.t_string;
+            info.value = va_arg(va, wchar_t*);
+            break;
         case 's': // string
             info.type = info.t_string;
             info.value.set(va_arg(va, char*));
