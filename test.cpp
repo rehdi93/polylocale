@@ -26,7 +26,7 @@ int main()
     //_printf_l("MS _printf_l: %.3f" "\t" "%02d:%02d:%06.3f" "\n", msloc.get(), num, 1, 37, 11.2f);
 
     auto polyloc = std::unique_ptr<locale_t, poly_locale_deleter>(newlocale(LC_ALL_MASK, "pt_BR", NULL));
-    printf_l("poly printf_l: % .3f" "\t" "%02d:%02d:%06.3f" "\n", polyloc.get(), num, 1, 37, 11);
+    printf_l("poly printf_l: % .3f" "\t" "%02d:%02d:%06.3f" "\n", polyloc.get(), num, 1, 37, 11.2f);
 
     return 0;
 }

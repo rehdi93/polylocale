@@ -22,17 +22,14 @@ struct poly_locale
 };
 typedef struct poly_locale* locale_t;
 
-//struct impl_locale_s;
-//typedef struct impl_locale_s* locale_t;
-
 
 // LC_*_MASK names
-#define LC_CTYPE_MASK       (LC_CTYPE)
-#define LC_NUMERIC_MASK     (LC_NUMERIC)
-#define LC_TIME_MASK        (LC_TIME)
-#define LC_COLLATE_MASK     (LC_COLLATE)
-#define LC_MONETARY_MASK    (LC_MONETARY)
-#define LC_ALL_MASK         (LC_ALL)
+#define LC_CTYPE_MASK       (1 << LC_CTYPE)
+#define LC_NUMERIC_MASK     (1 << LC_NUMERIC)
+#define LC_TIME_MASK        (1 << LC_TIME)
+#define LC_COLLATE_MASK     (1 << LC_COLLATE)
+#define LC_MONETARY_MASK    (1 << LC_MONETARY)
+#define LC_ALL_MASK         (LC_CTYPE_MASK | LC_NUMERIC_MASK | LC_TIME_MASK | LC_COLLATE_MASK | LC_MONETARY_MASK)
 
 locale_t newlocale(int category_mask, const char* localename, locale_t base);
 void freelocale(locale_t loc);

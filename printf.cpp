@@ -1,4 +1,4 @@
-﻿#include "polyprintf.h"
+﻿#include "polyloc.hpp"
 
 #include <sstream>
 #include <iomanip>
@@ -15,15 +15,19 @@ namespace
 
 constexpr auto STREAM_MAX = std::numeric_limits<std::streamsize>::max();
 
+constexpr char FMT_START    = '%';
+constexpr char FMT_ALL[]    = "%.*" "-+ #0" "hljztI" "CcudioXxEeFfGgAapSsn";
+constexpr char FMT_CHARS[]  = "%.*" "-+#0" "hljztI" "CcudioXxEeFfGgAapSsn";
+constexpr char FMT_FLAGS[]  = "-+ #0";
+constexpr char FMT_TYPES[]  = "CcudioXxEeFfGgAapSsn";
+constexpr char FMT_SIZES[]  = "hljztI";
+constexpr char FMT_PR = '.';
+constexpr char FMT_VA = '*';
+
+template <class T, std::size_t N>
+constexpr std::size_t countof(const T(&array)[N]) noexcept { return N; }
+
 }
-
-
-//template<class R1, class R2>
-//auto find_first_of(R1&& a, R2&& b) {
-//    using namespace std;
-//    return std::find_first_of(begin(a), end(a), begin(b), end(b));
-//}
-
 
 // holds info about the current spec being parsed
 struct printf_arg
@@ -247,58 +251,23 @@ struct printf_arg
 };
 
 
-// ctype that treats '%' as whitespace
-
-struct pf_ctype : std::ctype<char>
-{
-private:
-    static mask* make_table()
-    {
-        static std::vector<mask> table{ classic_table(), classic_table() + table_size };
-        table['%'] |= space;
-
-        return &table[0];
-    }
-
-    static mask* pfa_table()
-    {
-        static std::vector<mask> table{ table_size, space };
-
-        const char Flags[] = "-+ #0" "hljztI" "CcudioXxEeFfGgAapSsn"; // alpha
-        const char Seps[] = "%\f\n\r\t\v"; // blank
-
-        for (auto c : Flags)
-            table[c] = alpha;
-        
-        for (auto c : Seps)
-            table[c] = blank;
-
-        table['%'] |= xdigit;
-
-        return &table[0];
-    }
-
-protected:
-
-
-public:
-    pf_ctype() : ctype(pfa_table())
-    {
-    }
-};
-
 struct stream_state
 {
     ios::fmtflags flags;
     char fill;
     std::streamsize width, precision;
-    //std::locale locale;
+    std::ios& stream;
 
-    stream_state(std::ios const& ios)
+    stream_state(std::ios& ios)
         : flags(ios.flags()), fill(ios.fill()),
         width(ios.width()), precision(ios.precision())
-        //,locale(ios.getloc())
+        , stream(ios)
     {}
+
+    ~stream_state() noexcept
+    {
+        restore(stream);
+    }
 
     void restore(std::ios& io) const {
         io.flags(flags);
@@ -314,97 +283,32 @@ auto& operator << (std::ostream& os, const printf_arg& arg) {
     return arg.put(os);
 }
 
-using buf_iterator = std::istreambuf_iterator<char>;
-
 static auto parsefmt(std::ostream& outs, printf_arg& info, va_list& va) -> size_t;
+static auto parseline(std::ostream& outs, std::string& line, va_list& va) -> size_t;
 
-std::ostream& red::do_printf(std::istream& fmtss, std::ostream& outs, const std::locale& locale, va_list va)
+
+int red::polyloc::do_printf(std::istream& fmtss, std::ostream& outs, const std::locale& locale, va_list va)
 {
-    std::cerr << __func__ << ": locale=" << locale.name();
+    //std::cerr << '['<<__func__<<']'<< " locale=" << locale.name();
 
     if (fmtss.eof())
-        return outs;
+        return 0;
 
     outs.imbue(locale);
     fmtss.imbue(locale);
     fmtss.tie(&outs);
-    auto is_space = [&locale](unsigned char c) {
-        return std::isspace(c, locale);
-    };
 
-    std::string spec; spec.reserve(30);
-    //std::getline(fmtss, spec, '%');
-    for (;std::getline(fmtss, spec, '%');)
+    std::string line;
+    while (std::getline(fmtss, line))
     {
-        // found %
-        //outs << text;
-
-        if (fmtss.peek() == '%') {
-            // escaped % char
-            outs << fmtss.get();
-        }
-        else if (fmtss.unget().get() == '%') {
-            // %[flags][width][.precision][size]type
-            printf_arg info{ spec };
-            stream_state ss_state = outs;
-
-            auto n = parsefmt(outs, info, va);
-            spec.erase(0, n);
-
-            outs << info << spec;
-
-            ss_state.restore(outs);
-        }
-
+        parseline(outs, line, va);
     }
 
-    return outs;
+
+    return outs.tellp();
 }
 
-int red::do_printf(std::iostream& st, const std::locale& locale, va_list va)
-{
-    constexpr auto stream_max = std::numeric_limits<std::streamsize>::max();
-    constexpr auto npos = std::string::npos;
-
-    if (st.eof())
-        return 0;
-
-    st.imbue(locale);
-    auto is_space = [&locale](unsigned char c) {
-        return std::isspace(c, locale);
-    };
-
-    st.ignore(stream_max, '%');
-    if (st.eof()) {
-        return st.tellg();
-    }
-
-    auto gpos = st.tellg();
-    std::string text; text.reserve(30);
-    while (std::getline(st, text, '%'))
-    {
-        if (st.peek() == '%')
-        {
-            st << '%';
-        }
-        else
-        {
-            // %[flags][width][.precision][size]type
-            printf_arg info{ text };
-            stream_state ss_state = st;
-
-            auto n = parsefmt(st, info, va);
-            text.erase(0, n);
-            st.seekp(gpos-fpos_t(2));
-            
-            st << info << text;
-
-            ss_state.restore(st);
-        }
-    }
-
-    return st.tellg();
-}
+#include "boost/utility/string_view.hpp"
 
 size_t parsefmt(std::ostream& outs, printf_arg& info, va_list& va)
 {
@@ -413,7 +317,7 @@ size_t parsefmt(std::ostream& outs, printf_arg& info, va_list& va)
     
     size_t i = 0, prev = 0;
 
-    i = info.fmtspec.find_first_of("-+ #0", i);
+    i = info.fmtspec.find_first_of(FMT_FLAGS, i);
     if (i != npos)
     {
         switch (info.fmtspec[i])
@@ -486,7 +390,7 @@ size_t parsefmt(std::ostream& outs, printf_arg& info, va_list& va)
     // handle size overrides (optional)
     // this decides between int32/int64, double/long double
     prev = i;
-    i = info.fmtspec.find_first_of("hljztI", i);
+    i = info.fmtspec.find_first_of(FMT_SIZES, i);
     if (i != npos)
     {
         switch (info.fmtspec[i++])
@@ -530,7 +434,7 @@ size_t parsefmt(std::ostream& outs, printf_arg& info, va_list& va)
 
     // handle type, extract properties and value
     prev = i;
-    i = info.fmtspec.find_first_of("CcudioXxEeFfGgAapSsn", i);
+    i = info.fmtspec.find_first_of(FMT_TYPES, i);
     if (i != npos)
     {
         switch (info.fmtspec[i])
@@ -666,4 +570,51 @@ size_t parsefmt(std::ostream& outs, printf_arg& info, va_list& va)
         fail: info.setprops(info.t_invalid, info.s_signed, info.m_none);
         return npos;
     }
+}
+
+
+auto parseline(std::ostream& outs, std::string& line, va_list& va) -> size_t
+{
+    std::string spec;
+    spec.reserve(30);
+
+    size_t nchars = 0;
+    for (; ;)
+    {
+        // look for %
+        auto i = line.find(FMT_START);
+        if (i == std::string::npos) {
+            // no spec, foward to output
+            outs << line;
+            break;
+        }
+        else if (!line[i + 1] || line[i + 1] == FMT_START) {
+            // escaped % or null
+            outs << line[i + 1];
+            line.erase(i, 2);
+        }
+        else {
+            // possible fmtspec(s)
+            stream_state ss_state = outs;
+
+            const auto begin = i;
+            const auto end = line.find_first_of(FMT_TYPES, begin + 1)+1;
+            spec.assign(line, begin, end-begin);
+            
+            auto txtb4 = boost::string_view(line).substr(0,i);
+            outs << txtb4;
+
+            // %[flags][width][.precision][size]type
+            printf_arg info{ spec };
+            auto n = parsefmt(outs, info, va);
+
+            outs << info;
+
+            n += i + spec.size();
+            line.erase(0, i + spec.size());
+            nchars += n;
+        }
+    }
+
+    return nchars;
 }
