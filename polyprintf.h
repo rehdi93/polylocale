@@ -13,4 +13,6 @@ namespace red
 
 std::ostream& do_printf(std::istream& format, std::ostream& outs, const std::locale& loc, va_list va);
 
+int do_printf(std::iostream& st, const std::locale& loc, va_list va);
+
 }

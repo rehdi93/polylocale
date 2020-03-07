@@ -10,6 +10,19 @@
 using std::ios;
 
 // HELPERS
+namespace
+{
+
+constexpr auto STREAM_MAX = std::numeric_limits<std::streamsize>::max();
+
+}
+
+
+//template<class R1, class R2>
+//auto find_first_of(R1&& a, R2&& b) {
+//    using namespace std;
+//    return std::find_first_of(begin(a), end(a), begin(b), end(b));
+//}
 
 
 // holds info about the current spec being parsed
@@ -65,11 +78,14 @@ struct printf_arg
         void set(char* s) { string = s; }
         void set(wchar_t c) { wchar = c; }
         void set(wchar_t* s) { wstring = s; }
-        void set(intmax_t i) { integer = i; }
-        void set(uintmax_t i) { unsigned_integer = i; }
+        void set(int64_t i) { integer = i; }
+        void set(int32_t i) { integer = i; }
+        void set(uint64_t i) { unsigned_integer = i; }
+        void set(uint32_t i) { unsigned_integer = i; }
         void set(long double d) { floatpt = d; }
         void set(void* p) { pointer = p; }
         // ----
+
 
         template<typename T>
         values_u(T value) {
@@ -119,15 +135,7 @@ struct printf_arg
             os << this->value.character;
             break;
         case t_integer:
-            if (this->mod == narrow)
-            {
-                if (this->sign == s_signed) {
-                    blankpos(os, int32_t(value.integer));
-                }
-                else
-                    os << uint32_t(value.unsigned_integer);
-            }
-            else if (this->mod == wide)
+            if (this->mod == wide)
             {
                 if (this->sign == s_signed) {
                     blankpos(os, int64_t(value.integer));
@@ -135,13 +143,22 @@ struct printf_arg
                 else
                     os << uint64_t(value.unsigned_integer);
             }
+            else
+            {
+                if (this->sign == s_signed) {
+                    blankpos(os, int32_t(value.integer));
+                }
+                else
+                    os << uint32_t(value.unsigned_integer);
+            }
+
             break;
         case t_floating_pt:
-            if (this->mod == wide) {
-                blankpos(os, value.floatpt);
+            if (this->mod == narrow) {
+                blankpos(os, double(value.floatpt));
             }
             else {
-                blankpos(os, double(value.floatpt));
+                blankpos(os, value.floatpt);
             }
             break;
         case t_pointer:
@@ -231,6 +248,7 @@ struct printf_arg
 
 
 // ctype that treats '%' as whitespace
+
 struct pf_ctype : std::ctype<char>
 {
 private:
@@ -242,10 +260,31 @@ private:
         return &table[0];
     }
 
+    static mask* pfa_table()
+    {
+        static std::vector<mask> table{ table_size, space };
+
+        const char Flags[] = "-+ #0" "hljztI" "CcudioXxEeFfGgAapSsn"; // alpha
+        const char Seps[] = "%\f\n\r\t\v"; // blank
+
+        for (auto c : Flags)
+            table[c] = alpha;
+        
+        for (auto c : Seps)
+            table[c] = blank;
+
+        table['%'] |= xdigit;
+
+        return &table[0];
+    }
+
 protected:
 
+
 public:
-    pf_ctype() : ctype(make_table()) {}
+    pf_ctype() : ctype(pfa_table())
+    {
+    }
 };
 
 struct stream_state
@@ -275,70 +314,106 @@ auto& operator << (std::ostream& os, const printf_arg& arg) {
     return arg.put(os);
 }
 
-template<class R1, class R2>
-auto find_first_of(R1&& a, R2&& b) {
-    using namespace std;
-    return std::find_first_of(begin(a), end(a), begin(b), end(b));
-}
+using buf_iterator = std::istreambuf_iterator<char>;
 
-static void parsefmt(std::ostream& outs, printf_arg& info, va_list& va);
+static auto parsefmt(std::ostream& outs, printf_arg& info, va_list& va) -> size_t;
 
 std::ostream& red::do_printf(std::istream& fmtss, std::ostream& outs, const std::locale& locale, va_list va)
 {
+    std::cerr << __func__ << ": locale=" << locale.name();
+
     if (fmtss.eof())
         return outs;
 
     outs.imbue(locale);
     fmtss.imbue(locale);
-    auto locale_sep //= std::locale{ locale, new pf_ctype };
-                    = std::locale(std::locale::classic(), new pf_ctype);
+    fmtss.tie(&outs);
+    auto is_space = [&locale](unsigned char c) {
+        return std::isspace(c, locale);
+    };
 
     std::string spec; spec.reserve(30);
-
-    for (std::string text; std::getline(fmtss, text, '%');)
+    //std::getline(fmtss, spec, '%');
+    for (;std::getline(fmtss, spec, '%');)
     {
         // found %
-        stream_state ss_state = outs;
-        outs << text;
+        //outs << text;
 
-        // %[flags][width][.precision][size]type
-        printf_arg info{ spec };
-        
-        if (fmtss.eof()) {
-            // end
-        }
-        else if (fmtss.peek() == '%') {
-            // escaped %% char
+        if (fmtss.peek() == '%') {
+            // escaped % char
             outs << fmtss.get();
         }
-        else {
-            fmtss.imbue(locale_sep);
-            fmtss >> spec;
-            fmtss.imbue(locale);
+        else if (fmtss.unget().get() == '%') {
+            // %[flags][width][.precision][size]type
+            printf_arg info{ spec };
+            stream_state ss_state = outs;
 
-            parsefmt(outs, info, va);
+            auto n = parsefmt(outs, info, va);
+            spec.erase(0, n);
 
-            outs << info;
+            outs << info << spec;
+
+            ss_state.restore(outs);
         }
 
-        ss_state.restore(outs);
     }
 
     return outs;
 }
 
-void parsefmt(std::ostream& outs, printf_arg& info, va_list& va)
+int red::do_printf(std::iostream& st, const std::locale& locale, va_list va)
 {
-    const char chFlags[] = "-+ #0";
-    const char chSizes[] = "hljztI";
-    const char chType[] = "CcudioXxEeFfGgAapSsn";
+    constexpr auto stream_max = std::numeric_limits<std::streamsize>::max();
+    constexpr auto npos = std::string::npos;
+
+    if (st.eof())
+        return 0;
+
+    st.imbue(locale);
+    auto is_space = [&locale](unsigned char c) {
+        return std::isspace(c, locale);
+    };
+
+    st.ignore(stream_max, '%');
+    if (st.eof()) {
+        return st.tellg();
+    }
+
+    auto gpos = st.tellg();
+    std::string text; text.reserve(30);
+    while (std::getline(st, text, '%'))
+    {
+        if (st.peek() == '%')
+        {
+            st << '%';
+        }
+        else
+        {
+            // %[flags][width][.precision][size]type
+            printf_arg info{ text };
+            stream_state ss_state = st;
+
+            auto n = parsefmt(st, info, va);
+            text.erase(0, n);
+            st.seekp(gpos-fpos_t(2));
+            
+            st << info << text;
+
+            ss_state.restore(st);
+        }
+    }
+
+    return st.tellg();
+}
+
+size_t parsefmt(std::ostream& outs, printf_arg& info, va_list& va)
+{
     auto constexpr npos = std::string::npos;
     const auto locale = outs.getloc();
     
-    size_t i = 0;
-    auto prev = i;
+    size_t i = 0, prev = 0;
 
-    i = info.fmtspec.find_first_of(chFlags, i);
+    i = info.fmtspec.find_first_of("-+ #0", i);
     if (i != npos)
     {
         switch (info.fmtspec[i])
@@ -411,7 +486,7 @@ void parsefmt(std::ostream& outs, printf_arg& info, va_list& va)
     // handle size overrides (optional)
     // this decides between int32/int64, double/long double
     prev = i;
-    i = info.fmtspec.find_first_of(chSizes, i);
+    i = info.fmtspec.find_first_of("hljztI", i);
     if (i != npos)
     {
         switch (info.fmtspec[i++])
@@ -455,7 +530,7 @@ void parsefmt(std::ostream& outs, printf_arg& info, va_list& va)
 
     // handle type, extract properties and value
     prev = i;
-    i = info.fmtspec.find_first_of(chType, i);
+    i = info.fmtspec.find_first_of("CcudioXxEeFfGgAapSsn", i);
     if (i != npos)
     {
         switch (info.fmtspec[i])
@@ -472,26 +547,26 @@ void parsefmt(std::ostream& outs, printf_arg& info, va_list& va)
         case 'u': // Unsigned decimal integer
             outs << std::dec;
             info.setprops(info.t_integer, info.s_unsigned);
-            info.value.set(va_arg(va, uintmax_t));
-            break;
+
+            goto common_uint;
         case 'd': // Signed decimal integer
         case 'i':
             outs << std::dec;
             info.setprops(info.t_integer, info.s_signed);
-            info.value.set(va_arg(va, intmax_t));
-            break;
+
+            goto common_int;
         case 'o': // Unsigned octal integer
             outs << std::oct;
             info.setprops(info.t_integer, info.s_unsigned);
-            info.value.set(va_arg(va, uintmax_t));
-            break;
+
+            goto common_uint;
         case 'X': // Unsigned hexadecimal integer w/ uppercase letters
             outs.setf(ios::uppercase);
         case 'x': // Unsigned hexadecimal integer w/ lowercase letters
             outs << std::hex;
             info.setprops(info.t_integer, info.s_unsigned);
-            info.value.set(va_arg(va, uintmax_t));
-            break;
+            
+            goto common_uint;
         case 'E': // float, scientific notation
             outs.setf(ios::uppercase);
         case 'e': {
@@ -543,26 +618,52 @@ void parsefmt(std::ostream& outs, printf_arg& info, va_list& va)
             break;
         default: // unknown
             goto fail;
-        }
-        
+
         // https://docs.microsoft.com/en-us/cpp/c-runtime-library/format-specification-syntax-printf-and-wprintf-functions?view=vs-2019#argument-size-specification
-        if (info.type != info.t_invalid && info.mod == info.m_none)
-        {
-            switch (info.type)
-            {
-            case info.t_char:
-            case info.t_integer:
+        // integer args w/o size spec are treated as 32bit
+        common_int:
+            if (info.mod == info.m_none) {
                 info.mod = info.narrow;
-                break;
-            case info.t_floating_pt:
-                info.mod = info.wide;
-                break;
             }
+
+            if (info.mod == info.wide) {
+                info.value = va_arg(va, int64_t);
+            }
+            else {
+                info.value = va_arg(va, int32_t);
+            }
+            break;
+        common_uint:
+            if (info.mod == info.m_none) {
+                info.mod = info.narrow;
+            }
+
+            if (info.mod == info.wide) {
+                info.value = va_arg(va, uint64_t);
+            }
+            else {
+                info.value = va_arg(va, uint32_t);
+            }
+            break;
+        // floating point types w/o size spec are treated as 64bit
+        common_float:
+            if (info.mod == info.m_none) {
+                info.mod = info.wide;
+            }
+
+            if (info.mod == info.wide) {
+
+            }
+
+            break;
         }
+
+        return i + 1;
     }
     else
     {
         // couldn't find type specifier
         fail: info.setprops(info.t_invalid, info.s_signed, info.m_none);
+        return npos;
     }
 }

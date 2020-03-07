@@ -22,11 +22,11 @@ int main()
     double num = 123.456;
     printf("printf: %.3f" "\n", num);
     
-    auto msloc = std::unique_ptr<_locale_t, ms_locale_deleter>(_create_locale(LC_ALL, "pt_BR"));
-    _printf_l("MS _printf_l: %.3f" "\n" "%02d:%02d:%06.3f", msloc.get(), num, 1, 37, 11.2f);
+    //auto msloc = std::unique_ptr<_locale_t, ms_locale_deleter>(_create_locale(LC_ALL, "pt_BR"));
+    //_printf_l("MS _printf_l: %.3f" "\t" "%02d:%02d:%06.3f" "\n", msloc.get(), num, 1, 37, 11.2f);
 
     auto polyloc = std::unique_ptr<locale_t, poly_locale_deleter>(newlocale(LC_ALL_MASK, "pt_BR", NULL));
-    printf_l("poly printf_l: %.3f" "\n" "%02d:%02d:%06.3f", polyloc.get(), num, 1, 37, 11);
+    printf_l("poly printf_l: % .3f" "\t" "%02d:%02d:%06.3f" "\n", polyloc.get(), num, 1, 37, 11);
 
     return 0;
 }
