@@ -7,6 +7,7 @@
 #include <vector>
 #include <cassert>
 
+
 using std::ios;
 
 // HELPERS
@@ -17,12 +18,14 @@ constexpr auto STREAM_MAX = std::numeric_limits<std::streamsize>::max();
 
 constexpr char FMT_START    = '%';
 constexpr char FMT_ALL[]    = "%.*" "-+ #0" "hljztI" "CcudioXxEeFfGgAapSsn";
-constexpr char FMT_CHARS[]  = "%.*" "-+#0" "hljztI" "CcudioXxEeFfGgAapSsn";
+constexpr char FMT_CHARS[]  = "%.*" "-+#0"  "hljztI" "CcudioXxEeFfGgAapSsn";
 constexpr char FMT_FLAGS[]  = "-+ #0";
 constexpr char FMT_TYPES[]  = "CcudioXxEeFfGgAapSsn";
 constexpr char FMT_SIZES[]  = "hljztI";
-constexpr char FMT_PR = '.';
-constexpr char FMT_VA = '*';
+// precision
+constexpr char FMT_PRECISION = '.';
+// value from VA
+constexpr char FMT_FROM_VA = '*';
 
 template <class T, std::size_t N>
 constexpr std::size_t countof(const T(&array)[N]) noexcept { return N; }
@@ -43,14 +46,14 @@ struct printf_arg
         t_invalid = 0
     };
 
-    enum arg_t_w
+    enum arg_sizem
     {
         m_none,
         narrow,
         wide
     };
 
-    enum arg_t_sign
+    enum arg_sign
     {
         s_none,
         s_signed,
@@ -86,7 +89,7 @@ struct printf_arg
         void set(int32_t i) { integer = i; }
         void set(uint64_t i) { unsigned_integer = i; }
         void set(uint32_t i) { unsigned_integer = i; }
-        void set(long double d) { floatpt = d; }
+        void set(double d) { floatpt = d; }
         void set(void* p) { pointer = p; }
         // ----
 
@@ -101,18 +104,18 @@ struct printf_arg
 
 
     arg_t type = t_invalid;
-    arg_t_w mod = m_none;
-    arg_t_sign sign = s_none;
+    arg_sizem sizem = m_none;
+    arg_sign sign = s_none;
     bool blankpfx = false;
     std::string const& fmtspec;
     values_u value;
 
-    void setprops(arg_t t, arg_t_sign s, arg_t_w m) {
-        mod = m;
+    void setprops(arg_t t, arg_sign s, arg_sizem m) {
+        sizem = m;
         type = t;
         sign = s;
     }
-    void setprops(arg_t t, arg_t_sign s) {
+    void setprops(arg_t t, arg_sign s) {
         type = t;
         sign = s;
     }
@@ -130,6 +133,12 @@ struct printf_arg
         os << val;
     }
 
+    // sets printf_arg::sizem to wide if sizeof(T)==8, otherwise it's set to narrow
+    template<typename T>
+    constexpr void set_sizem() {
+        sizem = sizeof(T) == 8 ? wide : narrow;
+    }
+
     // print value
     auto& put(std::ostream& os) const
     {
@@ -139,7 +148,7 @@ struct printf_arg
             os << this->value.character;
             break;
         case t_integer:
-            if (this->mod == wide)
+            if (this->sizem == wide)
             {
                 if (this->sign == s_signed) {
                     blankpos(os, int64_t(value.integer));
@@ -158,7 +167,7 @@ struct printf_arg
 
             break;
         case t_floating_pt:
-            if (this->mod == narrow) {
+            if (this->sizem == narrow) {
                 blankpos(os, double(value.floatpt));
             }
             else {
@@ -234,8 +243,8 @@ struct printf_arg
         default: os << "???"; break;
         }
 
-        os << "\n\t" "mod = ";
-        switch (mod)
+        os << "\n\t" "sizem = ";
+        switch (sizem)
         {
         case m_none: os << "none"; break;
         case narrow: os << "narrow"; break;
@@ -299,7 +308,7 @@ int red::polyloc::do_printf(std::istream& fmtss, std::ostream& outs, const std::
     fmtss.tie(&outs);
 
     std::string line;
-    while (std::getline(fmtss, line))
+    while (std::getline(fmtss, line, '\0'))
     {
         parseline(outs, line, va);
     }
@@ -308,7 +317,57 @@ int red::polyloc::do_printf(std::istream& fmtss, std::ostream& outs, const std::
     return outs.tellp();
 }
 
-#include "boost/utility/string_view.hpp"
+int red::polyloc::do_printf(string_view fmt, std::ostream& outs, const std::locale& loc, va_list va)
+{
+    if (fmt.empty())
+        return 0;
+
+    outs.imbue(loc);
+
+    auto format = fmt;
+    std::string spec;
+    spec.reserve(30);
+
+    for (size_t i;;)
+    {
+        // look for %
+        i = format.find(FMT_START);
+
+        auto txtb4 = format.substr(0, i);
+
+        
+        if (i == string_view::npos)
+        {
+            // no more specs, we're done
+            outs << format;
+            return outs.tellp();
+        }
+        else if (!format[i + 1] || format[i + 1] == FMT_START)
+        {
+            // escaped % or null
+            outs << txtb4 << format[i + 1];
+            format.remove_prefix(txtb4.size()+2);
+        }
+        else
+        {
+            outs << txtb4;
+            // possible fmtspec(s)
+            stream_state state = outs;
+
+            const auto end = format.find_first_of(FMT_TYPES, i + 1) + 1;
+            spec.assign(format.data() + i, end - i);
+
+            // %[flags][width][.precision][size]type
+            printf_arg info{ spec };
+            auto n = parsefmt(outs, info, va);
+            outs << info;
+
+            i += spec.size();
+            format.remove_prefix(i);
+        }
+    }
+}
+
 
 size_t parsefmt(std::ostream& outs, printf_arg& info, va_list& va)
 {
@@ -329,7 +388,7 @@ size_t parsefmt(std::ostream& outs, printf_arg& info, va_list& va)
             outs.setf(ios::showpos);
             break;
         case ' ': // Use a blank to prefix the output value if it is signed and positive, ignored if '+' is also set
-            if ((outs.flags() & ios::showpos) != ios::showpos) {
+            if ((outs.flags() & ios::showpos) != 0) {
                 info.blankpfx = true;
             }
             // ...
@@ -346,7 +405,7 @@ size_t parsefmt(std::ostream& outs, printf_arg& info, va_list& va)
     else i = prev;
 
     // get field width (optional)
-    if (info.fmtspec[i] == '*')
+    if (info.fmtspec[i] == FMT_FROM_VA)
     {
         auto fw = va_arg(va, uint32_t);
         outs.width(fw);
@@ -366,10 +425,10 @@ size_t parsefmt(std::ostream& outs, printf_arg& info, va_list& va)
     }
 
     // get precision (optional)
-    if (info.fmtspec[i] == '.')
+    if (info.fmtspec[i] == FMT_PRECISION)
     {
         i++;
-        if (info.fmtspec[i] == '*')
+        if (info.fmtspec[i] == FMT_FROM_VA)
         {
             auto pr = va_arg(va, uint32_t);
             outs.precision(pr);
@@ -396,32 +455,32 @@ size_t parsefmt(std::ostream& outs, printf_arg& info, va_list& va)
         switch (info.fmtspec[i++])
         {
         case 'h': // halfwidth
-            info.mod = info.narrow;
+            info.sizem = info.narrow;
             if (info.fmtspec[i] == 'h')
                 i++; // QUARTERWIDTH
             break;
         case 'l':  // are we 64-bit (unix style)
             if (info.fmtspec[i] == 'l') {
-                info.mod = info.wide;
+                info.sizem = info.wide;
                 i++;
             }
             else {
-                info.mod = sizeof(long) == 8 ? info.wide : info.narrow;
+                info.set_sizem<long>();
             }
         case 'j': // are we 64-bit on intmax_t? (c99)
-            info.mod = sizeof(size_t) == 8 ? info.wide : info.narrow;
+            info.set_sizem<size_t>();
             break;
         case 'z': // are we 64-bit on size_t or ptrdiff_t? (c99)
         case 't':
-            info.mod = sizeof(ptrdiff_t) == 8 ? info.wide : info.narrow;
+            info.set_sizem<ptrdiff_t>();
             break;
         case 'I': // are we 64-bit (msft style)
             if (info.fmtspec[i] == '6' && info.fmtspec[i+1] == '4') {
-                info.mod = info.wide;
+                info.sizem = info.wide;
                 i++;
             }
             else if (info.fmtspec[i] == '3' && info.fmtspec[i+1] == '2') {
-                info.mod = sizeof(void*) == 8 ? info.wide : info.narrow;
+                info.set_sizem<void*>();
                 i++;
             }
             break;
@@ -429,7 +488,7 @@ size_t parsefmt(std::ostream& outs, printf_arg& info, va_list& va)
     }
     else {
         i = prev;
-        info.mod = info.m_none;
+        info.sizem = info.m_none;
     }
 
     // handle type, extract properties and value
@@ -440,13 +499,13 @@ size_t parsefmt(std::ostream& outs, printf_arg& info, va_list& va)
         switch (info.fmtspec[i])
         {
         case 'C': // wide char TODO
-            info.mod = info.wide;
+            info.sizem = info.wide;
             info.type = info.t_char;
             info.value = va_arg(va, wchar_t);
             break;
         case 'c': // char
             info.type = info.t_char;
-            info.value.set(va_arg(va, char));
+            info.value = va_arg(va, char);
             break;
         case 'u': // Unsigned decimal integer
             outs << std::dec;
@@ -475,62 +534,52 @@ size_t parsefmt(std::ostream& outs, printf_arg& info, va_list& va)
             outs.setf(ios::uppercase);
         case 'e': {
             outs << std::scientific;
-            auto a = va_arg(va, long double);
-            info.setprops(info.t_floating_pt, a >= 0);
-            info.value.set(a);
+            goto common_float;
         } break;
         case 'F': // float, fixed notation
             outs.setf(ios::uppercase);
         case 'f': {
             outs << std::fixed;
-            auto a = va_arg(va, long double);
-            info.setprops(info.t_floating_pt, a >= 0);
-            info.value = a;
+            goto common_float;
         } break;
         case 'G': // float, general notation
             outs.setf(ios::uppercase);
         case 'g': {
             outs << std::defaultfloat;
-            auto a = va_arg(va, long double);
-            info.setprops(info.t_floating_pt, a >= 0);
-            info.value.set(a);
+            goto common_float;
         } break;
         case 'A': // hex float
         case 'a': {
             outs << std::hexfloat;
-            auto a = va_arg(va, long double);
-            info.setprops(info.t_floating_pt, a >= 0);
-            info.value.set(a);
+            goto common_float;
         } break;
         case 'p': // pointer
             outs << std::hex;
             info.type = info.t_pointer;
-            info.value.set(va_arg(va, void*));
+            info.value = va_arg(va, void*);
             break;
         case 'S': // wide string TODO
-            info.mod = info.wide;
+            info.sizem = info.wide;
             info.type = info.t_string;
             info.value = va_arg(va, wchar_t*);
             break;
         case 's': // string
             info.type = info.t_string;
-            info.value.set(va_arg(va, char*));
+            info.value = va_arg(va, char*);
             break;
         case 'n': // weird write-bytes specifier (not implemented)
-            info.value.set(va_arg(va, void*));
+            info.value = va_arg(va, void*);
             info.type = info.t_byteswriten;
             break;
-        default: // unknown
-            goto fail;
 
         // https://docs.microsoft.com/en-us/cpp/c-runtime-library/format-specification-syntax-printf-and-wprintf-functions?view=vs-2019#argument-size-specification
         // integer args w/o size spec are treated as 32bit
         common_int:
-            if (info.mod == info.m_none) {
-                info.mod = info.narrow;
+            if (info.sizem == info.m_none) {
+                info.sizem = info.narrow;
             }
 
-            if (info.mod == info.wide) {
+            if (info.sizem == info.wide) {
                 info.value = va_arg(va, int64_t);
             }
             else {
@@ -538,11 +587,11 @@ size_t parsefmt(std::ostream& outs, printf_arg& info, va_list& va)
             }
             break;
         common_uint:
-            if (info.mod == info.m_none) {
-                info.mod = info.narrow;
+            if (info.sizem == info.m_none) {
+                info.sizem = info.narrow;
             }
 
-            if (info.mod == info.wide) {
+            if (info.sizem == info.wide) {
                 info.value = va_arg(va, uint64_t);
             }
             else {
@@ -551,12 +600,19 @@ size_t parsefmt(std::ostream& outs, printf_arg& info, va_list& va)
             break;
         // floating point types w/o size spec are treated as 64bit
         common_float:
-            if (info.mod == info.m_none) {
-                info.mod = info.wide;
+            if (info.sizem == info.m_none) {
+                info.sizem = info.wide;
             }
 
-            if (info.mod == info.wide) {
-
+            if (info.sizem == info.wide) {
+                auto a = va_arg(va, double);
+                info.setprops(info.t_floating_pt, a >= 0);
+                info.value = a;
+            }
+            else {
+                auto a = va_arg(va, float);
+                info.setprops(info.t_floating_pt, a >= 0);
+                info.value = a;
             }
 
             break;
@@ -601,7 +657,7 @@ auto parseline(std::ostream& outs, std::string& line, va_list& va) -> size_t
             const auto end = line.find_first_of(FMT_TYPES, begin + 1)+1;
             spec.assign(line, begin, end-begin);
             
-            auto txtb4 = boost::string_view(line).substr(0,i);
+            auto txtb4 = boost::string_view(line).substr(0, begin);
             outs << txtb4;
 
             // %[flags][width][.precision][size]type

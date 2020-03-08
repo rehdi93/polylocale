@@ -20,13 +20,14 @@ static_assert(std::is_same_v<locale_t, poly_locale*>, "locale_t type mismatch");
 int main()
 {
     double num = 123.456;
-    printf("printf: %.3f" "\n", num);
+    printf("printf_l: % .3f" "\t" "%02d:%02d:%06.3f" "\n" "100%% working!\n", num, 1, 37, 11.2f);
     
-    //auto msloc = std::unique_ptr<_locale_t, ms_locale_deleter>(_create_locale(LC_ALL, "pt_BR"));
-    //_printf_l("MS _printf_l: %.3f" "\t" "%02d:%02d:%06.3f" "\n", msloc.get(), num, 1, 37, 11.2f);
+    puts("-----");
 
     auto polyloc = std::unique_ptr<locale_t, poly_locale_deleter>(newlocale(LC_ALL_MASK, "pt_BR", NULL));
-    printf_l("poly printf_l: % .3f" "\t" "%02d:%02d:%06.3f" "\n", polyloc.get(), num, 1, 37, 11.2f);
+    printf_l("poly printf_l: % .3f" "\t" "%02d:%02d:%06.3f" "\n" "100%% working!\n", polyloc.get(), num, 1, 37, 11.2f);
+
+    puts("-----");
 
     return 0;
 }

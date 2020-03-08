@@ -16,6 +16,11 @@ struct poly_impl
 {
     std::locale loc;
     std::string name;
+
+    poly_impl() : poly_impl(std::locale()) {}
+
+    explicit poly_impl(const std::locale& lc)
+        : loc(lc), name(lc.name()) {}
 };
 
 using poly_locale_ptr = std::unique_ptr<poly_locale>;
@@ -24,7 +29,7 @@ using poly_locale_ptr = std::unique_ptr<poly_locale>;
 static auto make_polylocale(std::locale const& base) {
     auto plc = std::make_unique<poly_locale>();
     
-    plc->impl = new poly_impl{ base, base.name() };
+    plc->impl = new poly_impl{ base };
     plc->name = plc->impl->name.c_str();
     
     return plc;
@@ -70,7 +75,7 @@ static auto mask_to_cat(int mask) noexcept -> std::locale::category
 
 
 // https://pubs.opengroup.org/onlinepubs/9699919799/functions/newlocale.html
-locale_t newlocale(int category_mask, const char* localename, locale_t baseloc)
+locale_t newlocale(int category_mask, const char* localename, locale_t base)
 {
     try
     {
@@ -80,12 +85,25 @@ locale_t newlocale(int category_mask, const char* localename, locale_t baseloc)
             errno = EINVAL;
             return nullptr;
         }
-        
-        auto baselocale = baseloc ? baseloc->impl->loc : std::locale{};
-        auto lc = std::locale(baselocale, localename, cats);
-        auto plc = make_polylocale(lc);
 
-        return plc.release();
+        if (base)
+        {
+            auto& loc = base->impl->loc;
+            loc = std::locale(loc, localename, cats);
+
+            *base->impl = poly_impl(loc);
+            base->name = base->impl->name.c_str();
+
+            return base;
+        }
+        else
+        {
+            auto lc = std::locale({}, localename, cats);
+            auto plc = make_polylocale(lc);
+
+            return plc.release();
+        }
+        
     }
     catch(const std::bad_alloc&)
     {
@@ -157,30 +175,22 @@ double strtod_l(const char* str, char** endptr, locale_t locale)
     return num;
 }
 
-using array_read_buf    = boost::iostreams::stream_buffer<boost::iostreams::array_source>;
-using array_write_buf   = boost::iostreams::stream_buffer<boost::iostreams::array_sink>;
-using array_buf         = boost::iostreams::stream_buffer<boost::iostreams::array>;
-using string_view       = boost::string_view;
+using array_read_buf = boost::iostreams::stream_buffer<boost::iostreams::array_source>;
+using array_write_buf = boost::iostreams::stream_buffer<boost::iostreams::array_sink>;
+using array_buf = boost::iostreams::stream_buffer<boost::iostreams::array>;
+
 
 int printf_l(const char* fmt, locale_t locale, ...)
 {
     int result;
     va_list va;
     va_start(va, locale);
-
-    array_read_buf inputBuf(fmt, strlen(fmt));
-    std::istream fmts{ &inputBuf };
-    std::ostringstream tmp;
-    red::polyloc::do_printf(fmts, tmp, locale->impl->loc, va);
-
-    if (tmp.fail())
-        result = -1;
-    else {
+    {
+        std::ostringstream tmp;
+        result = red::polyloc::do_printf(fmt, tmp, locale->impl->loc, va);
         auto str = tmp.str();
-        result = str.size();
         std::cout << str;
     }
-
     va_end(va);
     return result;
 }
@@ -202,9 +212,9 @@ int sprintf_l(char* buffer, const char* fmt, locale_t loc, ...)
     int result;
     va_list va;
     va_start(va, loc);
-
-    result = vsnprintf_l(buffer, SIZE_MAX, fmt, loc, va);
-
+    {
+        result = vsnprintf_l(buffer, SIZE_MAX, fmt, loc, va);
+    }
     va_end(va);
     return result;
 }
@@ -214,9 +224,9 @@ int snprintf_l(char* buffer, size_t count, const char* format, locale_t locale, 
     int result;
     va_list va;
     va_start(va, locale);
-    
-    result = vsnprintf_l(buffer, count, format, locale, va);
-    
+    {
+        result = vsnprintf_l(buffer, count, format, locale, va);
+    }
     va_end(va);
     return result;
 }
@@ -224,30 +234,31 @@ int snprintf_l(char* buffer, size_t count, const char* format, locale_t locale, 
 int vsnprintf_l(char* buffer, size_t count, const char* fmt, locale_t locT, va_list args)
 {
     array_buf outputBuf (buffer, count);
-    array_read_buf inputBuf (fmt, strlen(fmt));
-
     std::ostream outs(&outputBuf);
-    std::istream fmts(&inputBuf);
-    int result = red::polyloc::do_printf(fmts, outs, locT->impl->loc, args);
+
+    int result = red::polyloc::do_printf(fmt, outs, locT->impl->loc, args);
     return result;
 }
 
 int vfprintf_l(FILE* cfile, const char* fmt, locale_t locale, va_list args)
 {
     int result;
-    array_read_buf fmtbuf (fmt, strlen(fmt));
-    std::istream fmts(&fmtbuf);
 
-#ifdef _MSC_VER
+    // TODO: FILE* to stream in other platforms
+    // libstdc++ (stdio_filebuf) https://gcc.gnu.org/onlinedocs/gcc-9.2.0/libstdc++/api/a10659.html
+    // libc++ (???) 
+
+#if defined(_MSC_VER)
     auto outs = std::ofstream(cfile);
+#elif defined(__GCC__)
+    __gnu_cxx::stdio_filebuf<char> fbuf{ cfile, std::ios::out };
+    auto outs = std::ofstream(&fbuf);
 #else
     errno = ENOTSUP;
     result = -1;
 #endif
 
-    red::polyloc::do_printf(fmts, outs, locale->impl->loc, args);
-
-    result = outs.tellp();
+    result = red::polyloc::do_printf(fmt, outs, locale->impl->loc, args);
     return result;
 }
 
