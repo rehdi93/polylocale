@@ -39,7 +39,6 @@ locale_t duplocale(locale_t loc);
 
 #define HAVE_STRTOD_L
 
-// polyfill
 double strtod_l(const char* str, char** endptr, locale_t loc);
 
 int printf_l(const char* fmt, locale_t locale, ...);

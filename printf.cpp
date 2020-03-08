@@ -18,7 +18,6 @@ constexpr auto STREAM_MAX = std::numeric_limits<std::streamsize>::max();
 
 constexpr char FMT_START    = '%';
 constexpr char FMT_ALL[]    = "%.*" "-+ #0" "hljztI" "CcudioXxEeFfGgAapSsn";
-constexpr char FMT_CHARS[]  = "%.*" "-+#0"  "hljztI" "CcudioXxEeFfGgAapSsn";
 constexpr char FMT_FLAGS[]  = "-+ #0";
 constexpr char FMT_TYPES[]  = "CcudioXxEeFfGgAapSsn";
 constexpr char FMT_SIZES[]  = "hljztI";

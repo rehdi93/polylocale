@@ -14,7 +14,9 @@ add_library(polylocale polylocale.cpp polylocale.h "printf.cpp" "polyloc.hpp")
 
 # TODO: Add tests and install targets if needed.
 find_package(Boost 1.70 REQUIRED COMPONENTS iostreams)
+find_package(Catch2 CONFIG REQUIRED)
+
 target_link_libraries(polylocale PRIVATE Boost::iostreams Boost::boost)
 
 add_executable(tester test.cpp)
-target_link_libraries(tester PRIVATE polylocale)
+target_link_libraries(tester PRIVATE polylocale Catch2::Catch2)

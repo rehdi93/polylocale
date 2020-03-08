@@ -43,10 +43,6 @@ static auto make_polylocale(locale_t loc) {
     return plc;
 }
 
-static auto getloc(locale_t lc) -> std::locale&
-{
-    return lc->impl->loc;
-}
 
 static auto mask_to_cat(int mask) noexcept -> std::locale::category
 {
@@ -134,8 +130,8 @@ locale_t duplocale(locale_t loc)
             return plc.release();
         }
         
-        auto* dup = new poly_locale(*loc);
-        return dup;
+        auto plc = make_polylocale(loc);
+        return plc.release();
     }
     catch(const std::bad_alloc&)
     {
@@ -195,17 +191,6 @@ int printf_l(const char* fmt, locale_t locale, ...)
     return result;
 }
 
-int fprintf_l(FILE* fs, const char* format, locale_t locale, ...)
-{
-    int result;
-    va_list va;
-    va_start(va, locale);
-    {
-        result = vfprintf_l(fs, format, locale, va);
-    }
-    va_end(va);
-    return result;
-}
 
 int sprintf_l(char* buffer, const char* fmt, locale_t loc, ...)
 {
@@ -213,7 +198,11 @@ int sprintf_l(char* buffer, const char* fmt, locale_t loc, ...)
     va_list va;
     va_start(va, loc);
     {
-        result = vsnprintf_l(buffer, SIZE_MAX, fmt, loc, va);
+        //result = vsnprintf_l(buffer, SIZE_MAX, fmt, loc, va);
+        std::ostringstream tmp;
+        result = red::polyloc::do_printf(fmt, tmp, loc->impl->loc, va);
+        auto contents = tmp.str();
+        contents.copy(buffer, contents.size());
     }
     va_end(va);
     return result;
@@ -233,10 +222,23 @@ int snprintf_l(char* buffer, size_t count, const char* format, locale_t locale, 
 
 int vsnprintf_l(char* buffer, size_t count, const char* fmt, locale_t locT, va_list args)
 {
-    array_buf outputBuf (buffer, count);
+    array_write_buf outputBuf (buffer, count);
     std::ostream outs(&outputBuf);
 
     int result = red::polyloc::do_printf(fmt, outs, locT->impl->loc, args);
+    return result;
+}
+
+
+int fprintf_l(FILE* fs, const char* format, locale_t locale, ...)
+{
+    int result;
+    va_list va;
+    va_start(va, locale);
+    {
+        result = vfprintf_l(fs, format, locale, va);
+    }
+    va_end(va);
     return result;
 }
 
@@ -261,10 +263,3 @@ int vfprintf_l(FILE* cfile, const char* fmt, locale_t locale, va_list args)
     result = red::polyloc::do_printf(fmt, outs, locale->impl->loc, args);
     return result;
 }
-
-// reference:
-// https://github.com/mltframework/mlt/issues/214#issuecomment-285895964
-// https://code.woboq.org/userspace/glibc/locale/locale.h.html#144
-// https://docs.microsoft.com/en-us/cpp/c-runtime-library/locale?view=vs-2019
-// https://github.com/nothings/stb
-// https://pubs.opengroup.org/onlinepubs/9699919799/basedefs/locale.h.html
