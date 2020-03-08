@@ -145,7 +145,16 @@ struct printf_arg
         switch (this->type)
         {
         case t_char:
-            os << this->value.character;
+            if (sizem == wide)
+            {
+                auto& f = std::use_facet<std::ctype<wchar_t>>(os.getloc());
+                auto c = f.narrow(value.wchar);
+                os << c;
+            }
+            else
+            {
+                os << value.character;
+            }
             break;
         case t_integer:
             if (this->sizem == wide)
@@ -168,7 +177,7 @@ struct printf_arg
             break;
         case t_floating_pt:
             if (this->sizem == narrow) {
-                blankpos(os, double(value.floatpt));
+                blankpos(os, float(value.floatpt));
             }
             else {
                 blankpos(os, value.floatpt);
@@ -178,7 +187,16 @@ struct printf_arg
             os << value.pointer;
             break;
         case t_string:
-            os << value.string;
+            if (sizem == wide) {
+                auto& f = std::use_facet<std::ctype<wchar_t>>(os.getloc());
+                red::wstring_view view = value.wstring;
+                std::string tmp(view.size(), '\0');
+                f.narrow(view.data(), view.data() + view.size(), '?', &tmp[0]);
+
+                os << tmp;
+            } else {
+                os << value.string;
+            }
             break;
         case t_byteswriten:
             // not implemented
@@ -336,7 +354,7 @@ int red::polyloc::do_printf(string_view fmt, std::ostream& outs, const std::loca
 
             // %[flags][width][.precision][size]type
             printf_arg info{ spec };
-            auto n = parsefmt(outs, info, va);
+            parsefmt(outs, info, va);
             outs << info;
 
             i += spec.size();
@@ -424,7 +442,7 @@ size_t parsefmt(std::ostream& outs, printf_arg& info, va_list& va)
     }
 
     // handle size overrides (optional)
-    // this decides between int32/int64, double/long double
+    // this decides between int32/int64, float/double
     prev = i;
     i = info.fmtspec.find_first_of(FMT_SIZES, i);
     if (i != npos)
