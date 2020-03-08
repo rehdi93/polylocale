@@ -293,29 +293,6 @@ auto& operator << (std::ostream& os, const printf_arg& arg) {
 }
 
 static auto parsefmt(std::ostream& outs, printf_arg& info, va_list& va) -> size_t;
-static auto parseline(std::ostream& outs, std::string& line, va_list& va) -> size_t;
-
-
-int red::polyloc::do_printf(std::istream& fmtss, std::ostream& outs, const std::locale& locale, va_list va)
-{
-    //std::cerr << '['<<__func__<<']'<< " locale=" << locale.name();
-
-    if (fmtss.eof())
-        return 0;
-
-    outs.imbue(locale);
-    fmtss.imbue(locale);
-    fmtss.tie(&outs);
-
-    std::string line;
-    while (std::getline(fmtss, line, '\0'))
-    {
-        parseline(outs, line, va);
-    }
-
-
-    return outs.tellp();
-}
 
 int red::polyloc::do_printf(string_view fmt, std::ostream& outs, const std::locale& loc, va_list va)
 {
@@ -332,9 +309,6 @@ int red::polyloc::do_printf(string_view fmt, std::ostream& outs, const std::loca
     {
         // look for %
         i = format.find(FMT_START);
-
-        auto txtb4 = format.substr(0, i);
-
         
         if (i == string_view::npos)
         {
@@ -342,7 +316,10 @@ int red::polyloc::do_printf(string_view fmt, std::ostream& outs, const std::loca
             outs << format;
             return outs.tellp();
         }
-        else if (!format[i + 1] || format[i + 1] == FMT_START)
+
+        auto txtb4 = format.substr(0, i);
+
+        if (!format[i + 1] || format[i + 1] == FMT_START)
         {
             // escaped % or null
             outs << txtb4 << format[i + 1];
@@ -626,51 +603,4 @@ size_t parsefmt(std::ostream& outs, printf_arg& info, va_list& va)
         fail: info.setprops(info.t_invalid, info.s_signed, info.m_none);
         return npos;
     }
-}
-
-
-auto parseline(std::ostream& outs, std::string& line, va_list& va) -> size_t
-{
-    std::string spec;
-    spec.reserve(30);
-
-    size_t nchars = 0;
-    for (; ;)
-    {
-        // look for %
-        auto i = line.find(FMT_START);
-        if (i == std::string::npos) {
-            // no spec, foward to output
-            outs << line;
-            break;
-        }
-        else if (!line[i + 1] || line[i + 1] == FMT_START) {
-            // escaped % or null
-            outs << line[i + 1];
-            line.erase(i, 2);
-        }
-        else {
-            // possible fmtspec(s)
-            stream_state ss_state = outs;
-
-            const auto begin = i;
-            const auto end = line.find_first_of(FMT_TYPES, begin + 1)+1;
-            spec.assign(line, begin, end-begin);
-            
-            auto txtb4 = boost::string_view(line).substr(0, begin);
-            outs << txtb4;
-
-            // %[flags][width][.precision][size]type
-            printf_arg info{ spec };
-            auto n = parsefmt(outs, info, va);
-
-            outs << info;
-
-            n += i + spec.size();
-            line.erase(0, i + spec.size());
-            nchars += n;
-        }
-    }
-
-    return nchars;
 }

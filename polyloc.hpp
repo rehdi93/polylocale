@@ -10,10 +10,10 @@
 namespace red {
 
 using string_view = boost::string_view;
+using wstring_view = boost::wstring_view;
 
 namespace polyloc {
 
-int do_printf(std::istream& format, std::ostream& outs, const std::locale& loc, va_list va);
 int do_printf(string_view format, std::ostream& outs, const std::locale& loc, va_list va);
 
 
