@@ -362,6 +362,32 @@ int red::polyloc::do_printf(string_view fmt, std::ostream& outs, const std::loca
     }
 }
 
+auto red::polyloc::do_printf_n(string_view format, std::ostream& outs, size_t max, const std::locale& loc, va_list va) -> write_result
+{
+    write_result ret;
+    std::ostringstream tmp;
+    ret.chars_needed = do_printf(format, tmp, loc, va);
+    auto tmpstr = tmp.str();
+
+    if (ret.chars_needed <= max)
+    {
+        outs << tmpstr;
+        ret.chars_written = tmpstr.size();
+    }
+    else
+    {
+        auto i = max > 0 ? max - 1 : 0;
+        auto to_be_writen = string_view(tmpstr).substr(0, i);
+
+        ret.chars_needed = tmpstr.size();
+        ret.chars_written = to_be_writen.size();
+
+        outs << to_be_writen;
+    }
+
+    return ret;
+}
+
 
 size_t parsefmt(std::ostream& outs, printf_arg& info, va_list& va)
 {
@@ -369,6 +395,8 @@ size_t parsefmt(std::ostream& outs, printf_arg& info, va_list& va)
     const auto locale = outs.getloc();
     
     size_t i = 0, prev = 0;
+
+    assert(info.fmtspec[i] == FMT_START);
 
     i = info.fmtspec.find_first_of(FMT_FLAGS, i);
     if (i != npos)
@@ -391,12 +419,18 @@ size_t parsefmt(std::ostream& outs, printf_arg& info, va_list& va)
             outs.setf(ios::showbase);
             break;
         case '0': // zero fill
-            outs.fill('0');
+            if (i == 1)
+                outs.fill('0');
+            else
+                i = 0;
+            
             break;
         }
-        i++;
     }
     else i = prev;
+
+    i++;
+
 
     // get field width (optional)
     if (info.fmtspec[i] == FMT_FROM_VA)

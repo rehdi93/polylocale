@@ -222,11 +222,11 @@ int snprintf_l(char* buffer, size_t count, const char* format, locale_t locale, 
 
 int vsnprintf_l(char* buffer, size_t count, const char* fmt, locale_t locT, va_list args)
 {
-    array_write_buf outputBuf (buffer, count);
+    array_buf outputBuf (buffer, count);
     std::ostream outs(&outputBuf);
 
-    int result = red::polyloc::do_printf(fmt, outs, locT->impl->loc, args);
-    return result;
+    auto result = red::polyloc::do_printf_n(fmt, outs, count, locT->impl->loc, args);
+    return result.chars_needed;
 }
 
 
