@@ -200,9 +200,9 @@ int sprintf_l(char* buffer, const char* fmt, locale_t loc, ...)
     {
         //result = vsnprintf_l(buffer, SIZE_MAX, fmt, loc, va);
         std::ostringstream tmp;
-        result = red::polyloc::do_printf(fmt, tmp, loc->impl->loc, va);
+        red::polyloc::do_printf(fmt, tmp, loc->impl->loc, va);
         auto contents = tmp.str();
-        contents.copy(buffer, contents.size());
+        result = contents.copy(buffer, contents.size());
     }
     va_end(va);
     return result;

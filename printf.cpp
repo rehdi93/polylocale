@@ -7,6 +7,7 @@
 #include <vector>
 #include <cassert>
 
+#include "bitmask.hpp"
 
 using std::ios;
 
@@ -31,41 +32,74 @@ constexpr std::size_t countof(const T(&array)[N]) noexcept { return N; }
 
 }
 
+
+using namespace bitmask::ops;
+
+enum class arg_flags : short
+{
+    none,
+    is_signed = 1 << 0,
+    is_unsigned = 1 << 1,
+    wide = 1 << 2,
+    narrow = 1 << 3,
+    size_unknown = 1 << 4,
+    blankpos = 1 << 5,
+    auto_precision = 1 << 6,
+
+    signfield = is_signed | is_unsigned,
+    sizefield = wide | narrow
+};
+
+enum class arg_type : unsigned char
+{
+    char_t = 'c',
+    int_t = 'i',
+    float_t = 'g',
+    pointer = 'p',
+    string = 's',
+    byteswriten = 'n',
+    unknown = 0
+};
+
+struct stream_state
+{
+    ios::fmtflags flags;
+    char fill;
+    std::streamsize width, precision;
+    std::ios& stream;
+
+    stream_state(std::ios& ios)
+        : flags(ios.flags()), fill(ios.fill()),
+        width(ios.width()), precision(ios.precision())
+        , stream(ios)
+    {}
+
+    ~stream_state() noexcept
+    {
+        restore(stream);
+    }
+
+    void restore(std::ios& io) const {
+        io.flags(flags);
+        io.fill(fill);
+        io.width(width);
+        io.precision(precision);
+        //io.imbue(locale);
+    }
+};
+
 // holds info about the current spec being parsed
 struct printf_arg
 {
-    enum arg_t
-    {
-        t_char = 1,
-        t_integer,
-        t_floating_pt,
-        t_pointer,
-        t_string,
-        t_byteswriten = -1,
-        t_invalid = 0
-    };
-
-    enum arg_sizem
-    {
-        m_none,
-        narrow,
-        wide
-    };
-
-    enum arg_sign
-    {
-        s_none,
-        s_signed,
-        s_unsigned
-    };
     
     // %[flags][width][.precision][size]type
     // worst case scenerio sizes:
     // 1 + 4  +  10 +  1 +  10  +   3  + 1 = 30
     // 10 is from INT_MAX
-    explicit printf_arg(const std::string& stor)
-        : fmtspec(stor)
-    {}
+    explicit printf_arg(const std::string& stor, const std::locale& loc)
+        : fmtspec(stor), locale(loc)
+    {
+    }
 
     union values_u {
         char character;
@@ -102,49 +136,38 @@ struct printf_arg
     };
 
 
-    arg_t type = t_invalid;
-    arg_sizem sizem = m_none;
-    arg_sign sign = s_none;
-    bool blankpfx = false;
+    arg_type type{};
+    arg_flags flags{};
+    ios::fmtflags iosflags{};
+    char fill = ' ';
+    int fieldw = 0, precision = 0;
+    std::locale locale;
+
     std::string const& fmtspec;
     values_u value;
 
-    void setprops(arg_t t, arg_sign s, arg_sizem m) {
-        sizem = m;
-        type = t;
-        sign = s;
-    }
-    void setprops(arg_t t, arg_sign s) {
-        type = t;
-        sign = s;
-    }
-    void setprops(arg_t t, bool signd) {
-        type = t;
-        sign = signd ? s_signed : s_unsigned;
-    }
-
-    template<typename T>
-    void blankpos(std::ostream& os, T val) const
-    {
-        if (blankpfx && val >= 0) {
-            os << ' ';
-        }
-        os << val;
-    }
-
-    // sets printf_arg::sizem to wide if sizeof(T)==8, otherwise it's set to narrow
+    
+    // sets arg_flags::wide if sizeof(T)==8, otherwise sets arg_flags::narrow
     template<typename T>
     constexpr void set_sizem() {
-        sizem = sizeof(T) == 8 ? wide : narrow;
+        auto sizem = sizeof(T) == 8 ? arg_flags::wide : arg_flags::narrow;
+        flags |= sizem;
     }
 
     // print value
     auto& put(std::ostream& os) const
     {
-        switch (this->type)
+        stream_state state = os;
+
+        os.width(fieldw);
+        os.precision(precision);
+        os.fill(fill);
+        os.flags(iosflags);
+
+        switch (type)
         {
-        case t_char:
-            if (sizem == wide)
+        case arg_type::char_t:
+            if (bitmask::has(flags, arg_flags::wide))
             {
                 auto& f = std::use_facet<std::ctype<wchar_t>>(os.getloc());
                 auto c = f.narrow(value.wchar);
@@ -155,38 +178,70 @@ struct printf_arg
                 os << value.character;
             }
             break;
-        case t_integer:
-            if (this->sizem == wide)
+        case arg_type::int_t:
+        {
+            bool skip = false;
+            bool doblankpos = bitmask::has_all(flags, arg_flags::blankpos | arg_flags::is_signed);
+
+            if (precision==0 && value.integer == 0)
             {
-                if (this->sign == s_signed) {
-                    blankpos(os, int64_t(value.integer));
+                if (bitmask::has_all(iosflags, ios::oct | ios::showbase))
+                {
+                    // for octal, if both the converted value and the precision are ​0​, single ​0​ is written.
+                    os << 0;
+                    skip = true;
                 }
-                else
+                else if (bitmask::has(flags, arg_flags::is_signed))
+                {
+                    skip = true;
+                }
+            }
+
+            if (doblankpos)
+                os.put(' ');
+
+            if (skip)
+            {
+                break;
+            }
+
+            if (bitmask::has(flags, arg_flags::wide))
+            {
+                if (bitmask::has(flags, arg_flags::is_signed)) {
+
+                    os << int64_t(value.integer);
+                }
+                else {
                     os << uint64_t(value.unsigned_integer);
+                }
             }
             else
             {
-                if (this->sign == s_signed) {
-                    blankpos(os, int32_t(value.integer));
+                if (bitmask::has(flags, arg_flags::is_signed)) {
+                    os << int32_t(value.integer);
                 }
-                else
+                else {
                     os << uint32_t(value.unsigned_integer);
+                }
             }
-
+        }
             break;
-        case t_floating_pt:
-            if (this->sizem == narrow) {
-                blankpos(os, float(value.floatpt));
+        case arg_type::float_t:
+            if (bitmask::has_all(flags, arg_flags::blankpos | arg_flags::is_signed))
+                os.put(' ');
+
+            if (bitmask::has(flags, arg_flags::narrow)) {
+                os << float(value.floatpt);
             }
             else {
-                blankpos(os, value.floatpt);
+                os << double(value.floatpt);
             }
             break;
-        case t_pointer:
+        case arg_type::pointer:
             os << value.pointer;
             break;
-        case t_string:
-            if (sizem == wide) {
+        case arg_type::string:
+            if (bitmask::has(flags, arg_flags::wide)) {
                 auto& f = std::use_facet<std::ctype<wchar_t>>(os.getloc());
                 red::wstring_view view = value.wstring;
                 std::string tmp(view.size(), '\0');
@@ -197,119 +252,29 @@ struct printf_arg
                 os << value.string;
             }
             break;
-        case t_byteswriten:
+        case arg_type::byteswriten:
             // not implemented
         default:
-            // invalid, print fmt as-is
-            os << fmtspec;
+            // invalid, print fmt as-is minus %
+            auto v = red::string_view(fmtspec).substr(1);
+            os << v;
             break;
         }
 
         return os;
     }
 
-    // print the state of this
-    auto& putdbg(std::ostream& os) const
-    {
-        const auto fl = os.flags();
-        os << "state of printf_arg @ "<<std::hex<<std::showbase<<this;
-        os.flags(fl);
-
-        os << std::dec;
-        os << "\n\t" "fmt = " << fmtspec;
-        os << "\n\t" "type = ";
-        switch (type)
-        {
-        case t_char:
-            os << "char";
-            os << " (" << value.character << ")";
-            break;
-        case t_integer:
-            os << "integer";
-            os << " (" << value.integer << ")";
-            break;
-        case t_floating_pt:
-            os << "floating point";
-            os << " (" << value.floatpt << ")";
-            break;
-        case t_pointer:
-            os << "pointer";
-            os << " (" << std::hex << value.pointer << ")";
-            break;
-        case t_string:
-            os << "string";
-            os << " (" << value.string << ")";
-            break;
-        case t_byteswriten:
-            os << "byteswriten";
-            os << " (" << std::hex << value.pointer << ")";
-            break;
-        case t_invalid:
-            os << "invalid (NA)";
-            break;
-        default:
-            os << "???";
-            break;
-        }
-
-        os << "\n\t" "sign = ";
-        switch (sign)
-        {
-        case s_signed: os << "signed"; break;
-        case s_unsigned: os << "unsigned"; break;
-        default: os << "???"; break;
-        }
-
-        os << "\n\t" "sizem = ";
-        switch (sizem)
-        {
-        case m_none: os << "none"; break;
-        case narrow: os << "narrow"; break;
-        case wide: os << "wide"; break;
-        default: os << "???"; break;
-        }
-
-        os << "\n\t" "blankpfx = "<<std::boolalpha<<blankpfx;
-
-        os.flags(fl);
-        return os;
-    }
 };
 
 
-struct stream_state
-{
-    ios::fmtflags flags;
-    char fill;
-    std::streamsize width, precision;
-    std::ios& stream;
 
-    stream_state(std::ios& ios)
-        : flags(ios.flags()), fill(ios.fill()),
-        width(ios.width()), precision(ios.precision())
-        , stream(ios)
-    {}
-
-    ~stream_state() noexcept
-    {
-        restore(stream);
-    }
-
-    void restore(std::ios& io) const {
-        io.flags(flags);
-        io.fill(fill);
-        io.width(width);
-        io.precision(precision);
-        //io.imbue(locale);
-    }
-};
 
 
 auto& operator << (std::ostream& os, const printf_arg& arg) {
     return arg.put(os);
 }
 
-static auto parsefmt(std::ostream& outs, printf_arg& info, va_list& va) -> size_t;
+static auto parsefmt(printf_arg& info, va_list& va) -> size_t;
 
 int red::polyloc::do_printf(string_view fmt, std::ostream& outs, const std::locale& loc, va_list va)
 {
@@ -345,15 +310,14 @@ int red::polyloc::do_printf(string_view fmt, std::ostream& outs, const std::loca
         else
         {
             outs << txtb4;
-            // possible fmtspec(s)
-            stream_state state = outs;
 
+            // possible fmtspec(s)
             const auto end = format.find_first_of(FMT_TYPES, i + 1) + 1;
             spec.assign(format.data() + i, end - i);
 
             // %[flags][width][.precision][size]type
-            printf_arg info{ spec };
-            parsefmt(outs, info, va);
+            printf_arg info{ spec, loc };
+            parsefmt(info, va);
             outs << info;
 
             i += spec.size();
@@ -389,10 +353,10 @@ auto red::polyloc::do_printf_n(string_view format, std::ostream& outs, size_t ma
 }
 
 
-size_t parsefmt(std::ostream& outs, printf_arg& info, va_list& va)
+size_t parsefmt(printf_arg& info, va_list& va)
 {
     auto constexpr npos = std::string::npos;
-    const auto locale = outs.getloc();
+    const auto locale = info.locale;
     
     size_t i = 0, prev = 0;
 
@@ -404,23 +368,23 @@ size_t parsefmt(std::ostream& outs, printf_arg& info, va_list& va)
         switch (info.fmtspec[i])
         {
         case '-': // left justify
-            outs << std::left;
+            info.iosflags |= ios::left;
             break;
         case '+': // show positive sign
-            outs.setf(ios::showpos);
+            info.iosflags |= ios::showpos;
             break;
         case ' ': // Use a blank to prefix the output value if it is signed and positive, ignored if '+' is also set
-            if ((outs.flags() & ios::showpos) != 0) {
-                info.blankpfx = true;
+            if (!bitmask::has(info.iosflags, ios::showpos)) {
+                info.flags |= arg_flags::blankpos;
             }
             // ...
             break;
         case '#':
-            outs.setf(ios::showbase);
+            info.iosflags |= ios::showbase;
             break;
         case '0': // zero fill
             if (i == 1)
-                outs.fill('0');
+                info.fill = '0';
             else
                 i = 0;
             
@@ -435,8 +399,8 @@ size_t parsefmt(std::ostream& outs, printf_arg& info, va_list& va)
     // get field width (optional)
     if (info.fmtspec[i] == FMT_FROM_VA)
     {
-        auto fw = va_arg(va, uint32_t);
-        outs.width(fw);
+        auto fw = va_arg(va, int);
+        info.fieldw = fw;
         i++;
     }
     else if (std::isdigit(info.fmtspec[i], locale))
@@ -444,7 +408,7 @@ size_t parsefmt(std::ostream& outs, printf_arg& info, va_list& va)
         int fw; size_t converted;
         try {
             fw = std::stoi(info.fmtspec.substr(i), &converted);
-            outs.width(fw);
+            info.fieldw = fw;
             i += converted;
         }
         catch (const std::exception&) {
@@ -458,20 +422,24 @@ size_t parsefmt(std::ostream& outs, printf_arg& info, va_list& va)
         i++;
         if (info.fmtspec[i] == FMT_FROM_VA)
         {
-            auto pr = va_arg(va, uint32_t);
-            outs.precision(pr);
+            auto pr = va_arg(va, int);
+            info.precision = pr;
             i++;
         }
         else if (std::isdigit(info.fmtspec[i], locale)) try
         {
             int pr; size_t converted;
             pr = std::stoi(info.fmtspec.substr(i), &converted);
-            outs.precision(pr);
+            info.precision = pr;
             i += converted;
         }
         catch (const std::exception&) {
             // no conversion took place
         }
+    }
+    else
+    {
+        info.flags |= arg_flags::auto_precision;
     }
 
     // handle size overrides (optional)
@@ -483,18 +451,19 @@ size_t parsefmt(std::ostream& outs, printf_arg& info, va_list& va)
         switch (info.fmtspec[i++])
         {
         case 'h': // halfwidth
-            info.sizem = info.narrow;
+            info.flags = arg_flags::narrow;
             if (info.fmtspec[i] == 'h')
                 i++; // QUARTERWIDTH
             break;
         case 'l':  // are we 64-bit (unix style)
             if (info.fmtspec[i] == 'l') {
-                info.sizem = info.wide;
+                info.flags |= arg_flags::wide;
                 i++;
             }
             else {
                 info.set_sizem<long>();
             }
+            break;
         case 'j': // are we 64-bit on intmax_t? (c99)
             info.set_sizem<size_t>();
             break;
@@ -504,7 +473,7 @@ size_t parsefmt(std::ostream& outs, printf_arg& info, va_list& va)
             break;
         case 'I': // are we 64-bit (msft style)
             if (info.fmtspec[i] == '6' && info.fmtspec[i+1] == '4') {
-                info.sizem = info.wide;
+                info.flags |= arg_flags::wide;
                 i++;
             }
             else if (info.fmtspec[i] == '3' && info.fmtspec[i+1] == '2') {
@@ -516,7 +485,7 @@ size_t parsefmt(std::ostream& outs, printf_arg& info, va_list& va)
     }
     else {
         i = prev;
-        info.sizem = info.m_none;
+        info.flags |= arg_flags::size_unknown;
     }
 
     // handle type, extract properties and value
@@ -527,87 +496,93 @@ size_t parsefmt(std::ostream& outs, printf_arg& info, va_list& va)
         switch (info.fmtspec[i])
         {
         case 'C': // wide char TODO
-            info.sizem = info.wide;
-            info.type = info.t_char;
+            info.type = arg_type::char_t;
+            bitmask::setm(info.flags, arg_flags::wide, arg_flags::sizefield);
             info.value = va_arg(va, wchar_t);
             break;
         case 'c': // char
-            info.type = info.t_char;
+            info.type = arg_type::char_t;
+            bitmask::setm(info.flags, arg_flags::narrow, arg_flags::sizefield);
             info.value = va_arg(va, char);
             break;
         case 'u': // Unsigned decimal integer
-            outs << std::dec;
-            info.setprops(info.t_integer, info.s_unsigned);
-
+            info.iosflags |= ios::dec;
+            info.type = arg_type::int_t;
             goto common_uint;
         case 'd': // Signed decimal integer
         case 'i':
-            outs << std::dec;
-            info.setprops(info.t_integer, info.s_signed);
+            info.iosflags |= ios::dec;
+            info.type = arg_type::int_t;
 
             goto common_int;
         case 'o': // Unsigned octal integer
-            outs << std::oct;
-            info.setprops(info.t_integer, info.s_unsigned);
+            info.type = arg_type::int_t;
+            info.iosflags |= ios::oct;
 
             goto common_uint;
         case 'X': // Unsigned hexadecimal integer w/ uppercase letters
-            outs.setf(ios::uppercase);
+            info.iosflags |= ios::uppercase;
         case 'x': // Unsigned hexadecimal integer w/ lowercase letters
-            outs << std::hex;
-            info.setprops(info.t_integer, info.s_unsigned);
+            info.iosflags |= ios::hex;
+            info.type = arg_type::int_t;
             
             goto common_uint;
         case 'E': // float, scientific notation
-            outs.setf(ios::uppercase);
-        case 'e': {
-            outs << std::scientific;
+            info.iosflags |= ios::uppercase;
+        case 'e':
+            info.iosflags |= ios::scientific;
+            info.type = arg_type::float_t;
             goto common_float;
-        } break;
         case 'F': // float, fixed notation
-            outs.setf(ios::uppercase);
-        case 'f': {
-            outs << std::fixed;
+            info.iosflags |= ios::uppercase;
+        case 'f':
+            info.iosflags |= ios::fixed;
+            info.type = arg_type::float_t;
+
             goto common_float;
-        } break;
         case 'G': // float, general notation
-            outs.setf(ios::uppercase);
-        case 'g': {
-            outs << std::defaultfloat;
+            info.iosflags |= ios::uppercase;
+        case 'g':
+            info.iosflags &= ~ios::floatfield;
+            info.type = arg_type::float_t;
+
             goto common_float;
-        } break;
         case 'A': // hex float
-        case 'a': {
-            outs << std::hexfloat;
+            info.iosflags |= ios::uppercase;
+        case 'a':
+            info.iosflags |= ios::hexfloat;
+            info.type = arg_type::float_t;
+
             goto common_float;
-        } break;
         case 'p': // pointer
-            outs << std::hex;
-            info.type = info.t_pointer;
+            info.iosflags |= ios::hex;
+            info.type = arg_type::pointer;
             info.value = va_arg(va, void*);
             break;
         case 'S': // wide string TODO
-            info.sizem = info.wide;
-            info.type = info.t_string;
+            info.flags |= arg_flags::wide;
+            info.type = arg_type::string;
             info.value = va_arg(va, wchar_t*);
             break;
         case 's': // string
-            info.type = info.t_string;
+            info.type = arg_type::string;
             info.value = va_arg(va, char*);
             break;
         case 'n': // weird write-bytes specifier (not implemented)
             info.value = va_arg(va, void*);
-            info.type = info.t_byteswriten;
+            info.type = arg_type::byteswriten;
             break;
 
         // https://docs.microsoft.com/en-us/cpp/c-runtime-library/format-specification-syntax-printf-and-wprintf-functions?view=vs-2019#argument-size-specification
         // integer args w/o size spec are treated as 32bit
         common_int:
-            if (info.sizem == info.m_none) {
-                info.sizem = info.narrow;
+            info.flags |= arg_flags::is_signed;
+
+            if (bitmask::has(info.flags, arg_flags::size_unknown)) {
+                info.flags |= arg_flags::narrow;
             }
 
-            if (info.sizem == info.wide) {
+            if (bitmask::has(info.flags, arg_flags::wide)) {
                 info.value = va_arg(va, int64_t);
             }
             else {
@@ -615,11 +590,13 @@ size_t parsefmt(std::ostream& outs, printf_arg& info, va_list& va)
             }
             break;
         common_uint:
-            if (info.sizem == info.m_none) {
-                info.sizem = info.narrow;
+            info.flags |= arg_flags::is_unsigned;
+
+            if (bitmask::has(info.flags, arg_flags::size_unknown)) {
+                info.flags |= arg_flags::narrow;
             }
 
-            if (info.sizem == info.wide) {
+            if (bitmask::has(info.flags, arg_flags::wide)) {
                 info.value = va_arg(va, uint64_t);
             }
             else {
@@ -628,18 +605,18 @@ size_t parsefmt(std::ostream& outs, printf_arg& info, va_list& va)
             break;
         // floating point types w/o size spec are treated as 64bit
         common_float:
-            if (info.sizem == info.m_none) {
-                info.sizem = info.wide;
+            if (bitmask::has(info.flags, arg_flags::size_unknown)) {
+                info.flags |= arg_flags::wide;
             }
 
-            if (info.sizem == info.wide) {
+            if (bitmask::has(info.flags, arg_flags::wide)) {
                 auto a = va_arg(va, double);
-                info.setprops(info.t_floating_pt, a >= 0);
+                info.flags |= a >= 0 ? arg_flags::is_signed : arg_flags::is_unsigned;
                 info.value = a;
             }
             else {
                 auto a = va_arg(va, float);
-                info.setprops(info.t_floating_pt, a >= 0);
+                info.flags |= a >= 0 ? arg_flags::is_signed : arg_flags::is_unsigned;
                 info.value = a;
             }
 
@@ -651,7 +628,9 @@ size_t parsefmt(std::ostream& outs, printf_arg& info, va_list& va)
     else
     {
         // couldn't find type specifier
-        fail: info.setprops(info.t_invalid, info.s_signed, info.m_none);
+        info.type = arg_type::unknown;
+        info.flags = arg_flags::none;
+        info.iosflags = ios::fmtflags{};
         return npos;
     }
 }

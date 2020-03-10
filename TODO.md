@@ -9,3 +9,4 @@
 - https://docs.microsoft.com/en-us/cpp/c-runtime-library/locale?view=vs-2019
 - https://github.com/nothings/stb
 - https://pubs.opengroup.org/onlinepubs/9699919799/basedefs/locale.h.html
+- https://en.cppreference.com/w/c/io/fprintf
