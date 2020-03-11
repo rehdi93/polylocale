@@ -1,4 +1,4 @@
-﻿#include "polyloc.hpp"
+﻿#include "printf.hpp"
 
 #include <sstream>
 #include <iomanip>
@@ -386,7 +386,7 @@ int red::polyloc::do_printf(string_view fmt, std::ostream& outs, const std::loca
     }
 }
 
-auto red::polyloc::do_printf_n(string_view format, std::ostream& outs, size_t max, const std::locale& loc, va_list va) -> write_result
+auto red::polyloc::do_printf(string_view format, std::ostream& outs, size_t max, const std::locale& loc, va_list va) -> write_result
 {
     write_result ret;
 

@@ -1,5 +1,6 @@
 #include "polylocale.h"
-#include "polyloc.hpp"
+#include "impl/printf.hpp"
+#include "impl/polyimpl.h"
 
 #include <locale>
 #include <sstream>
@@ -10,7 +11,6 @@
 
 #include "boost/iostreams/stream_buffer.hpp"
 #include "boost/iostreams/device/array.hpp"
-#include "boost/utility/string_view.hpp"
 
 struct poly_impl
 {
@@ -85,9 +85,8 @@ locale_t newlocale(int category_mask, const char* localename, locale_t base)
         if (base)
         {
             auto& loc = base->impl->loc;
-            loc = std::locale(loc, localename, cats);
 
-            *base->impl = poly_impl(loc);
+            *base->impl = poly_impl(std::locale(loc, localename, cats));
             base->name = base->impl->name.c_str();
 
             return base;
@@ -172,7 +171,6 @@ double strtod_l(const char* str, char** endptr, locale_t locale)
 }
 
 using array_read_buf = boost::iostreams::stream_buffer<boost::iostreams::array_source>;
-using array_write_buf = boost::iostreams::stream_buffer<boost::iostreams::array_sink>;
 using array_buf = boost::iostreams::stream_buffer<boost::iostreams::array>;
 
 
@@ -182,12 +180,19 @@ int printf_l(const char* fmt, locale_t locale, ...)
     va_list va;
     va_start(va, locale);
     {
-        std::ostringstream tmp;
-        result = red::polyloc::do_printf(fmt, tmp, locale->impl->loc, va);
-        auto str = tmp.str();
-        std::cout << str;
+        result = vprintf_l(fmt, locale, va);
     }
     va_end(va);
+    return result;
+}
+
+int vprintf_l(const char* fmt, locale_t locale, va_list args)
+{
+    std::ostringstream tmp;
+    red::polyloc::do_printf(fmt, tmp, locale->impl->loc, args);
+    auto contents = tmp.str();
+    auto result = (int)contents.size();
+    std::cout << contents;
     return result;
 }
 
@@ -198,13 +203,18 @@ int sprintf_l(char* buffer, const char* fmt, locale_t loc, ...)
     va_list va;
     va_start(va, loc);
     {
-        //result = vsnprintf_l(buffer, SIZE_MAX, fmt, loc, va);
-        std::ostringstream tmp;
-        red::polyloc::do_printf(fmt, tmp, loc->impl->loc, va);
-        auto contents = tmp.str();
-        result = contents.copy(buffer, contents.size());
+        result = vsprintf_l(buffer, fmt, loc, va);
     }
     va_end(va);
+    return result;
+}
+
+int vsprintf_l(char* buffer, const char* fmt, locale_t loc, va_list args)
+{
+    std::ostringstream tmp;
+    red::polyloc::do_printf(fmt, tmp, loc->impl->loc, args);
+    auto contents = tmp.str();
+    int result = contents.copy(buffer, contents.size());
     return result;
 }
 
@@ -225,7 +235,7 @@ int vsnprintf_l(char* buffer, size_t count, const char* fmt, locale_t locT, va_l
     array_buf outputBuf (buffer, count);
     std::ostream outs(&outputBuf);
 
-    auto result = red::polyloc::do_printf_n(fmt, outs, count, locT->impl->loc, args);
+    auto result = red::polyloc::do_printf(fmt, outs, count, locT->impl->loc, args);
     return result.chars_needed;
 }
 
@@ -258,6 +268,7 @@ int vfprintf_l(FILE* cfile, const char* fmt, locale_t locale, va_list args)
 #else
     errno = ENOTSUP;
     result = -1;
+    return result;
 #endif
 
     result = red::polyloc::do_printf(fmt, outs, locale->impl->loc, args);

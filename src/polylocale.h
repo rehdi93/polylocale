@@ -42,11 +42,13 @@ locale_t duplocale(locale_t loc);
 double strtod_l(const char* str, char** endptr, locale_t loc);
 
 int printf_l(const char* fmt, locale_t locale, ...);
+int vprintf_l(const char* fmt, locale_t locale, va_list args);
 int fprintf_l(FILE* stream, const char* format, locale_t locale, ...);
+int vfprintf_l(FILE* cfile, const char* fmt, locale_t locale, va_list args);
 int sprintf_l(char* buffer, const char* fmt, locale_t loc, ...);
+int vsprintf_l(char* buffer, const char* format, locale_t locale, va_list args);
 int snprintf_l(char* buffer, size_t count, const char* fmt, locale_t loc, ...);
 int vsnprintf_l(char* buffer, size_t count, const char* fmt, locale_t loc, va_list args);
-int vfprintf_l(FILE* cfile, const char* fmt, locale_t locale, va_list args);
 
 #ifdef __cplusplus
 }
