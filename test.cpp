@@ -10,7 +10,16 @@
 
 template<size_t Count>
 using char_array = std::array<char, Count>;
+
 using boost::string_view;
+
+template<size_t Count>
+struct char_buffer : std::array<char, Count>
+{
+    operator char* () {
+        return &this->front();
+    }
+};
 
 static_assert(std::is_same_v<locale_t, poly_locale*>, "locale_t type mismatch");
 
@@ -48,10 +57,11 @@ sprintf_test_result do_test_sprintf(std::string expected, char* buf, size_t coun
 
 #define FMT_TEST_BASE(expected_, fmt, buffer, count, locp, ...) SECTION(#fmt " --> " #expected_) { \
     auto tr = do_test_sprintf(expected_, buffer, count, fmt, locp, __VA_ARGS__); \
-    CHECK(tr.returnValue == tr.expected.size()); \
+    CAPTURE(tr.returnValue, tr.expected.size()); \
     REQUIRE(tr.expected == tr.result); }
     
 #define TEST_FMT(expected_, fmt, ...) FMT_TEST_BASE(expected_, fmt, buf, size_t(-1), ploc, __VA_ARGS__);
+#define TEST_FMT_N(expected_, fmt, count, ...)  FMT_TEST_BASE(expected_, fmt, buf, count, ploc, __VA_ARGS__)
 
 
 TEST_CASE("Formating integers", "[sprintf_l][format]")
@@ -64,6 +74,7 @@ TEST_CASE("Formating integers", "[sprintf_l][format]")
 
     INFO("Locale: " << localename);
 
+    TEST_FMT("0177 0", "%# +o %#o", 127, 0);
     TEST_FMT("a b     1", "%c %s     %d", 'a', "b", 1);
     TEST_FMT("abc     ", "%-8.3s", "abcdefgh");
     TEST_FMT("+5", "%+2d", 5);
@@ -80,13 +91,7 @@ TEST_CASE("Formating integers", "[sprintf_l][format]")
     TEST_FMT("", "%.0d", 0);
     TEST_FMT("33 555", "%hi %ld", (short)33, 555l);
     TEST_FMT("9888777666", "%llu", 9888777666llu);
-    //TEST_FMT("-1 2 -3", "%ji %zi %ti", intmax_t(-1), ssize_t(2), ptrdiff_t(-3));
-    SECTION("%ji %zi %ti" " --> " "-1 2 -3")
-    {
-        int ret = sprintf_l(buf, "%ji %zi %ti", ploc, (intmax_t)-1, (ssize_t)2, (ptrdiff_t)-3);
-        string_view result = buf;
-        REQUIRE(result == "-1 2 -3");
-    }
+    //TEST_FMT("-1 2 -3", "%ji %zi %ti", (intmax_t)-1, (ssize_t)2, (ptrdiff_t)-3);
 }
 
 TEST_CASE("Formating floating point", "[sprintf_l][format]")
@@ -142,7 +147,7 @@ TEST_CASE("(new|free|dup)locale work", "[poly C]") {
     freelocale(ploc_copy);
 }
 
-TEST_CASE("poly sprintf_l tests", "[sprintf_l]")
+TEST_CASE("other sprintf_l tests", "[sprintf_l]")
 {
     char_array<1024> buffer{}; auto* buf = &buffer[0];
     std::string locname = "C";
@@ -153,10 +158,28 @@ TEST_CASE("poly sprintf_l tests", "[sprintf_l]")
     REQUIRE(sprintf_l(buf, "%d  %600s", ploc, 3, "abc") == 603);
 }
 
-#define TEST_FMT_N(expected_, fmt, count, ...)  FMT_TEST_BASE(expected_, fmt, buf, count, ploc, __VA_ARGS__)
+TEST_CASE("Size handler bug", "[sprintf_l][bug]")
+{
+    auto localename = "C";
+    auto loc = locale_ptr(newlocale(LC_ALL_MASK, localename, NULL), freelocale);
+    char_buffer<1024> buffer{};
+
+    intmax_t j = -1;
+    ssize_t z = 2;
+    ptrdiff_t t = -3;
+    std::string expected = "-1 2 -3", result;
+
+    int returnValue = sprintf_l(buffer, "%ji %zi %ti", loc.get(), j, z, t);
+    result = buffer;
+
+    CAPTURE(returnValue, expected.size(), j,z,t);
+    INFO("Format = \"" "%ji %zi %ti" "\"");
+    REQUIRE(expected == result);
+}
 
 
-TEST_CASE("poly snprintf_l tests", "[snprintf_l]") {
+
+TEST_CASE("snprintf_l tests", "[snprintf_l]") {
     auto localename = "C";
     auto loc = locale_ptr(newlocale(LC_ALL_MASK, localename, NULL), freelocale);
     char_array<1024> buffer{};

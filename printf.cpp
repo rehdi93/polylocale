@@ -34,31 +34,33 @@ constexpr std::size_t countof(const T(&array)[N]) noexcept { return N; }
 
 
 using namespace bitmask::ops;
+namespace bm = bitmask;
 
-enum class arg_flags : short
+enum class arg_flags : unsigned short
 {
     none,
     is_signed = 1 << 0,
     is_unsigned = 1 << 1,
     wide = 1 << 2,
-    narrow = 1 << 3,
-    size_unknown = 1 << 4,
-    blankpos = 1 << 5,
-    auto_precision = 1 << 6,
+    blankpos = 1 << 4,
+    showpos = 1 << 5,
+
+    altform = 1 << 9, // ios::showbase for ints, ios::showpoint for floats
 
     signfield = is_signed | is_unsigned,
-    sizefield = wide | narrow
+    sizefield = wide,
+    posfield = blankpos|showpos
 };
 
 enum class arg_type : unsigned char
 {
+    unknown = 0,
     char_t = 'c',
     int_t = 'i',
     float_t = 'g',
     pointer = 'p',
     string = 's',
-    byteswriten = 'n',
-    unknown = 0
+    byteswriten = 'n'
 };
 
 struct stream_state
@@ -141,18 +143,21 @@ struct printf_arg
     arg_flags flags{};
     ios::fmtflags iosflags{};
     char fill = ' ';
-    int fieldw = 0, precision = 0;
+    int fieldw = -1, precision = -1; // auto
     std::locale const& locale;
 
     std::string const& fmtspec;
     values_u value;
 
     
-    // sets arg_flags::wide if sizeof(T)==8, otherwise sets arg_flags::narrow
+    // sets arg_flags::wide if sizeof(T)==8
     template<typename T>
-    constexpr void set_sizem() {
-        auto sizem = sizeof(T) == 8 ? arg_flags::wide : arg_flags::narrow;
-        flags |= sizem;
+    constexpr void set_sizem() 
+    {
+        if (sizeof(T)==8)
+        {
+            flags |= arg_flags::wide;
+        }
     }
 
 
@@ -161,15 +166,18 @@ struct printf_arg
     {
         stream_state state = os;
 
-        os.width(fieldw);
-        os.precision(precision);
-        os.fill(fill);
+        const auto signfield = (flags & arg_flags::signfield);
+        const auto widthfield = (flags & arg_flags::sizefield);
+
         os.flags(iosflags);
+        os.width(fieldw != -1 ? fieldw : 0);
+        os.precision(precision != -1 ? precision : 0);
+        os.fill(fill);
 
         switch (type)
         {
         case arg_type::char_t:
-            if (bitmask::has(flags, arg_flags::wide))
+            if (widthfield == arg_flags::wide)
             {
                 auto& f = std::use_facet<std::ctype<wchar_t>>(os.getloc());
                 auto c = f.narrow(value.wchar);
@@ -182,9 +190,9 @@ struct printf_arg
             break;
         case arg_type::int_t:
         {
-            if (bitmask::has(flags, arg_flags::wide))
+            if (widthfield == arg_flags::wide)
             {
-                if (bitmask::has(flags, arg_flags::is_signed)) {
+                if (signfield == arg_flags::is_signed) {
                     put_int(os, int64_t(value.integer));
                 }
                 else {
@@ -193,7 +201,7 @@ struct printf_arg
             }
             else
             {
-                if (bitmask::has(flags, arg_flags::is_signed)) {
+                if (signfield == arg_flags::is_signed) {
                     put_int(os, int32_t(value.integer));
                 }
                 else {
@@ -209,7 +217,7 @@ struct printf_arg
             os << value.pointer;
             break;
         case arg_type::string:
-            if (bitmask::has(flags, arg_flags::wide)) {
+            if (widthfield == arg_flags::wide) {
                 put_str(os, value.wstring);
             } else {
                 put_str(os, value.string);
@@ -230,10 +238,15 @@ struct printf_arg
 private:
     void put_fp(std::ostream& os, double number) const
     {
-        if (bitmask::has_all(flags, arg_flags::blankpos | arg_flags::is_signed))
+        if (bm::has(flags, arg_flags::altform)) {
+            os << std::showpoint;
+        }
+
+        const auto posfield = (flags & arg_flags::posfield);
+        if (posfield == arg_flags::blankpos && number >= 0)
             os.put(' ');
 
-        if (bitmask::has(flags, arg_flags::auto_precision))
+        if (precision == -1)
         {
             os.precision(6);
         }
@@ -270,8 +283,10 @@ private:
     template<typename T, class = is_int<T>>
     void put_int(std::ostream& os, T val) const
     {
+        const auto posfield = (flags & arg_flags::posfield);
+
         bool skip = false;
-        if (precision == 0 && val == 0)
+        if (precision <= 0 && val == 0)
         {
             if (bitmask::has_all(iosflags, ios::oct | ios::showbase))
             {
@@ -279,15 +294,14 @@ private:
                 os << 0;
                 skip = true;
             }
-            else if (!bitmask::has(iosflags, ios::showpos))
+            else if (posfield != arg_flags::showpos)
             {
                 skip = true;
             }
         }
 
-        if (bitmask::has(flags, arg_flags::blankpos) && val >= 0 && fieldw < 2) {
+        if (posfield == arg_flags::blankpos && val >= 0 && fieldw < 2)
             os.put(' ');
-        }
 
         if (skip)
             return;
@@ -295,9 +309,12 @@ private:
         if (precision > 0)
         {
             auto remainingW = std::max(fieldw - precision, 0);
-            while (remainingW-- > 0)
+            if (remainingW > 0)
             {
-                os.put(fill);
+                char s = ' ';
+                os.width(remainingW);
+                os.fill(s);
+                os << s;
             }
 
             os.width(precision);
@@ -372,86 +389,97 @@ int red::polyloc::do_printf(string_view fmt, std::ostream& outs, const std::loca
 auto red::polyloc::do_printf_n(string_view format, std::ostream& outs, size_t max, const std::locale& loc, va_list va) -> write_result
 {
     write_result ret;
+
     std::ostringstream tmp;
-    ret.chars_needed = do_printf(format, tmp, loc, va);
+    do_printf(format, tmp, loc, va);
     auto tmpstr = tmp.str();
+    ret.chars_needed = tmpstr.size();
 
     if (ret.chars_needed <= max)
     {
-        outs << tmpstr;
         ret.chars_written = tmpstr.size();
+        outs << tmpstr;
+    }
+    else if (max == 0)
+    {
+        ret.chars_written = 0;
     }
     else
     {
-        auto i = max > 0 ? max - 1 : 0;
-        auto to_be_writen = string_view(tmpstr).substr(0, i);
-
-        ret.chars_needed = tmpstr.size();
+        auto to_be_writen = string_view(tmpstr).substr(0, max - 1);
         ret.chars_written = to_be_writen.size();
-
         outs << to_be_writen;
     }
 
     return ret;
 }
 
-
-size_t parsefmt(printf_arg& info, va_list& va)
+static size_t parseflags(printf_arg& info)
 {
-    auto constexpr npos = std::string::npos;
-    const auto locale = info.locale;
-    
-    size_t i = 0, prev = 0;
+    red::string_view spec = info.fmtspec;
 
-    assert(info.fmtspec[0] == FMT_START);
+    assert(spec[0] == FMT_START);
+    size_t i = 0, p = 1;
 
-    i = info.fmtspec.find_first_of(FMT_FLAGS, i);
-    if (i != npos)
+    while (i = spec.find_first_of(FMT_FLAGS) != std::string::npos)
     {
-        switch (info.fmtspec[i])
+        switch (spec[i])
         {
         case '-': // left justify
             info.iosflags |= ios::left;
             break;
         case '+': // show positive sign
-            info.iosflags |= ios::showpos;
+            bm::setm(info.flags, arg_flags::showpos, arg_flags::posfield);
             break;
-        case ' ': // Use a blank to prefix the output value if it is signed and positive, ignored if '+' is also set
-            if (!bitmask::has(info.iosflags, ios::showpos)) {
-                info.flags |= arg_flags::blankpos;
-            }
-            // ...
+        case ' ': // Use a blank to prefix the output value if it is signed and positive, 
+            bm::setm(info.flags, arg_flags::blankpos, arg_flags::posfield);
             break;
         case '#':
-            info.iosflags |= ios::showbase;
+            info.flags |= arg_flags::altform;
             break;
-        case '0': // zero fill
+        case '0':
             if (i == 1)
                 info.fill = '0';
-            else
-                i = 0;
-            
+            else {
+                // not a flag, but part of the width spec
+                goto after;
+            }
             break;
+        default:
+            goto after;
         }
+
+        spec.remove_prefix(i);
+        p += i;
     }
-    else i = prev;
 
-    i++;
+after:
+    if ((info.flags & arg_flags::posfield) == arg_flags::showpos)
+    {
+        info.iosflags |= ios::showpos;
+    }
+    
+    return p;
+}
 
+size_t parsefmt(printf_arg& info, va_list& va)
+{
+    auto constexpr npos = std::string::npos;
+    const auto locale = info.locale;
+
+    auto i = parseflags(info);
 
     // get field width (optional)
     if (info.fmtspec[i] == FMT_FROM_VA)
     {
-        auto fw = va_arg(va, int);
-        info.fieldw = fw;
+        info.fieldw = va_arg(va, int);
         i++;
     }
     else if (std::isdigit(info.fmtspec[i], locale))
     {
-        int fw; size_t converted;
+        size_t converted;
         try {
-            fw = std::stoi(info.fmtspec.substr(i), &converted);
-            info.fieldw = fw;
+            info.fieldw = std::stoi(info.fmtspec.substr(i), &converted);
             i += converted;
         }
         catch (const std::exception&) {
@@ -478,21 +506,18 @@ size_t parsefmt(printf_arg& info, va_list& va)
             // no conversion took place
         }
     }
-    else
-    {
-        info.flags |= arg_flags::auto_precision;
-    }
 
     // handle size overrides (optional)
     // this decides between int32/int64, float/double
-    prev = i;
+    bool auto_size = false;
+    auto prev = i;
     i = info.fmtspec.find_first_of(FMT_SIZES, i);
     if (i != npos)
     {
         switch (info.fmtspec[i++])
         {
         case 'h': // halfwidth
-            info.flags = arg_flags::narrow;
+            /*info.flags = arg_flags::narrow;*/
             if (info.fmtspec[i] == 'h')
                 i++; // QUARTERWIDTH
             break;
@@ -526,7 +551,7 @@ size_t parsefmt(printf_arg& info, va_list& va)
     }
     else {
         i = prev;
-        info.flags |= arg_flags::size_unknown;
+        auto_size = true;
     }
 
     // handle type, extract properties and value
@@ -538,12 +563,11 @@ size_t parsefmt(printf_arg& info, va_list& va)
         {
         case 'C': // wide char TODO
             info.type = arg_type::char_t;
-            bitmask::setm(info.flags, arg_flags::wide, arg_flags::sizefield);
+            info.flags |= arg_flags::wide;
             info.value = va_arg(va, wchar_t);
             break;
         case 'c': // char
             info.type = arg_type::char_t;
-            bitmask::setm(info.flags, arg_flags::narrow, arg_flags::sizefield);
             info.value = va_arg(va, char);
             break;
         case 'u': // Unsigned decimal integer
@@ -619,8 +643,8 @@ size_t parsefmt(printf_arg& info, va_list& va)
         common_int:
             info.flags |= arg_flags::is_signed;
 
-            if (bitmask::has(info.flags, arg_flags::size_unknown)) {
-                info.flags |= arg_flags::narrow;
+            if (bm::has(info.flags, arg_flags::altform)) {
+                info.iosflags |= ios::showbase;
             }
 
             if (bitmask::has(info.flags, arg_flags::wide)) {
@@ -633,8 +657,8 @@ size_t parsefmt(printf_arg& info, va_list& va)
         common_uint:
             info.flags |= arg_flags::is_unsigned;
 
-            if (bitmask::has(info.flags, arg_flags::size_unknown)) {
-                info.flags |= arg_flags::narrow;
+            if (bm::has(info.flags, arg_flags::altform)) {
+                info.iosflags |= ios::showbase;
             }
 
             if (bitmask::has(info.flags, arg_flags::wide)) {
@@ -646,21 +670,16 @@ size_t parsefmt(printf_arg& info, va_list& va)
             break;
         // floating point types w/o size spec are treated as 64bit
         common_float:
-            if (bitmask::has(info.flags, arg_flags::size_unknown)) {
+            if (auto_size) {
                 info.flags |= arg_flags::wide;
             }
-
-            if (bitmask::has(info.flags, arg_flags::wide)) {
-                auto a = va_arg(va, double);
-                info.flags |= a >= 0 ? arg_flags::is_signed : arg_flags::is_unsigned;
-                info.value = a;
-            }
-            else {
-                auto a = va_arg(va, float);
-                info.flags |= a >= 0 ? arg_flags::is_signed : arg_flags::is_unsigned;
-                info.value = a;
+            if (bm::has(info.flags, arg_flags::altform)) {
+                info.iosflags |= ios::showpoint;
             }
 
+            auto a = va_arg(va, double);
+            info.flags |= a >= 0 ? arg_flags::is_signed : arg_flags::is_unsigned;
+            info.value = a;
             break;
         }
 
