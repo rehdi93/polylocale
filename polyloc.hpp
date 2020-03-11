@@ -7,10 +7,16 @@
 
 #include "boost/utility/string_view.hpp"
 
+#ifndef SSIZE_MAX
+using ssize_t = std::make_signed<size_t>::type;
+#endif // !SSIZE_MAX
+
+
 namespace red {
 
-using string_view = boost::string_view;
-using wstring_view = boost::wstring_view;
+using boost::string_view;
+using boost::wstring_view;
+using boost::basic_string_view;
 
 namespace polyloc {
 

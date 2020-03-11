@@ -123,6 +123,7 @@ struct printf_arg
         void set(uint64_t i) { unsigned_integer = i; }
         void set(uint32_t i) { unsigned_integer = i; }
         void set(double d) { floatpt = d; }
+        void set(long double d) { floatpt = d; }
         void set(void* p) { pointer = p; }
         // ----
 
@@ -141,7 +142,7 @@ struct printf_arg
     ios::fmtflags iosflags{};
     char fill = ' ';
     int fieldw = 0, precision = 0;
-    std::locale locale;
+    std::locale const& locale;
 
     std::string const& fmtspec;
     values_u value;
@@ -153,6 +154,7 @@ struct printf_arg
         auto sizem = sizeof(T) == 8 ? arg_flags::wide : arg_flags::narrow;
         flags |= sizem;
     }
+
 
     // print value
     auto& put(std::ostream& os) const
@@ -180,76 +182,37 @@ struct printf_arg
             break;
         case arg_type::int_t:
         {
-            bool skip = false;
-            bool doblankpos = bitmask::has_all(flags, arg_flags::blankpos | arg_flags::is_signed);
-
-            if (precision==0 && value.integer == 0)
-            {
-                if (bitmask::has_all(iosflags, ios::oct | ios::showbase))
-                {
-                    // for octal, if both the converted value and the precision are ​0​, single ​0​ is written.
-                    os << 0;
-                    skip = true;
-                }
-                else if (bitmask::has(flags, arg_flags::is_signed))
-                {
-                    skip = true;
-                }
-            }
-
-            if (doblankpos)
-                os.put(' ');
-
-            if (skip)
-            {
-                break;
-            }
-
             if (bitmask::has(flags, arg_flags::wide))
             {
                 if (bitmask::has(flags, arg_flags::is_signed)) {
-
-                    os << int64_t(value.integer);
+                    put_int(os, int64_t(value.integer));
                 }
                 else {
-                    os << uint64_t(value.unsigned_integer);
+                    put_int(os, uint64_t(value.unsigned_integer));
                 }
             }
             else
             {
                 if (bitmask::has(flags, arg_flags::is_signed)) {
-                    os << int32_t(value.integer);
+                    put_int(os, int32_t(value.integer));
                 }
                 else {
-                    os << uint32_t(value.unsigned_integer);
+                    put_int(os, uint32_t(value.unsigned_integer));
                 }
             }
         }
             break;
         case arg_type::float_t:
-            if (bitmask::has_all(flags, arg_flags::blankpos | arg_flags::is_signed))
-                os.put(' ');
-
-            if (bitmask::has(flags, arg_flags::narrow)) {
-                os << float(value.floatpt);
-            }
-            else {
-                os << double(value.floatpt);
-            }
+            put_fp(os, value.floatpt);
             break;
         case arg_type::pointer:
             os << value.pointer;
             break;
         case arg_type::string:
             if (bitmask::has(flags, arg_flags::wide)) {
-                auto& f = std::use_facet<std::ctype<wchar_t>>(os.getloc());
-                red::wstring_view view = value.wstring;
-                std::string tmp(view.size(), '\0');
-                f.narrow(view.data(), view.data() + view.size(), '?', &tmp[0]);
-
-                os << tmp;
+                put_str(os, value.wstring);
             } else {
-                os << value.string;
+                put_str(os, value.string);
             }
             break;
         case arg_type::byteswriten:
@@ -262,6 +225,86 @@ struct printf_arg
         }
 
         return os;
+    }
+
+private:
+    void put_fp(std::ostream& os, double number) const
+    {
+        if (bitmask::has_all(flags, arg_flags::blankpos | arg_flags::is_signed))
+            os.put(' ');
+
+        if (bitmask::has(flags, arg_flags::auto_precision))
+        {
+            os.precision(6);
+        }
+        else if (precision == 0)
+        {
+            number = std::round(number);
+        }
+
+        os << number;
+    }
+
+    void put_str(std::ostream& os, red::wstring_view str) const {
+        std::string tmp;
+
+        auto& f = std::use_facet<std::ctype<wchar_t>>(os.getloc());
+        tmp.append(str.size(), '\0');
+        f.narrow(str.data(), str.data()+str.size(), '?', &tmp[0]);
+
+        put_str(os, tmp);
+    }
+
+    void put_str(std::ostream& os, red::string_view str) const {
+        if (precision > 0)
+        {
+            str = str.substr(0, precision);
+        }
+
+        os << str;
+    }
+
+    template<class I>
+    using is_int = std::enable_if_t<std::is_integral<I>::value>;
+
+    template<typename T, class = is_int<T>>
+    void put_int(std::ostream& os, T val) const
+    {
+        bool skip = false;
+        if (precision == 0 && val == 0)
+        {
+            if (bitmask::has_all(iosflags, ios::oct | ios::showbase))
+            {
+                // for octal, if both the converted value and the precision are ​0​, single ​0​ is written.
+                os << 0;
+                skip = true;
+            }
+            else if (!bitmask::has(iosflags, ios::showpos))
+            {
+                skip = true;
+            }
+        }
+
+        if (bitmask::has(flags, arg_flags::blankpos) && val >= 0 && fieldw < 2) {
+            os.put(' ');
+        }
+
+        if (skip)
+            return;
+
+        if (precision > 0)
+        {
+            auto remainingW = std::max(fieldw - precision, 0);
+            while (remainingW-- > 0)
+            {
+                os.put(fill);
+            }
+
+            os.width(precision);
+            os.fill('0');
+        }
+
+        os << val;
     }
 
 };
@@ -360,7 +403,7 @@ size_t parsefmt(printf_arg& info, va_list& va)
     
     size_t i = 0, prev = 0;
 
-    assert(info.fmtspec[i] == FMT_START);
+    assert(info.fmtspec[0] == FMT_START);
 
     i = info.fmtspec.find_first_of(FMT_FLAGS, i);
     if (i != npos)
@@ -422,15 +465,13 @@ size_t parsefmt(printf_arg& info, va_list& va)
         i++;
         if (info.fmtspec[i] == FMT_FROM_VA)
         {
-            auto pr = va_arg(va, int);
-            info.precision = pr;
+            info.precision = va_arg(va, int);
             i++;
         }
         else if (std::isdigit(info.fmtspec[i], locale)) try
         {
-            int pr; size_t converted;
-            pr = std::stoi(info.fmtspec.substr(i), &converted);
-            info.precision = pr;
+            size_t converted;
+            info.precision = std::stoi(info.fmtspec.substr(i), &converted);
             i += converted;
         }
         catch (const std::exception&) {
