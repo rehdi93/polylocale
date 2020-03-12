@@ -4,8 +4,8 @@
 namespace bitmask
 {
 
-template<class T>
-using is_bitmask = std::disjunction<std::is_integral<T>, std::is_enum<T>>;
+//template<class T>
+//using is_bitmask = std::disjunction<std::is_integral<T>, std::is_enum<T>>;
 
 template<typename T>
 using identity = std::common_type<T>;
@@ -55,19 +55,19 @@ inline namespace ops
 
 template<typename Enum> [[nodiscard]]
 constexpr bool has(Enum left, identity_t<Enum> elements) noexcept {
-    static_assert(is_bitmask<Enum>{}, "not a bitmask type");
+    static_assert(std::is_integral<Enum>{} || std::is_enum<Enum>{}, "not a bitmask type");
     return (left & elements) != Enum{};
 }
 
 template<typename Enum> [[nodiscard]]
 constexpr bool has_all(Enum left, identity_t<Enum> elements) noexcept {
-    static_assert(is_bitmask<Enum>{}, "not a bitmask type");
+    static_assert(std::is_integral<Enum>{} || std::is_enum<Enum>{}, "not a bitmask type");
     return (left & elements) == elements;
 }
 
 template<typename Enum>
 constexpr Enum setm(Enum& left, identity_t<Enum> flags, identity_t<Enum> mask) noexcept {
-    static_assert(is_bitmask<Enum>{}, "not a bitmask type");
+    static_assert(std::is_integral<Enum>{} || std::is_enum<Enum>{}, "not a bitmask type");
     auto old = left;
     left = (left & ~mask) | (flags & mask);
     return old;

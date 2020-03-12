@@ -1,0 +1,8 @@
+// polylocale config
+
+#cmakedefine ENABLE_PRINTF
+
+// if the C library conforms to X/Open, don't declare undecorated names
+#if !defined(_XOPEN_SOURCE) || POLYLOC_UNDECORATED_FORCE
+#define POLYLOC_UNDECORATED
+#endif

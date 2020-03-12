@@ -10,6 +10,8 @@ endif()
 
 option(ENABLE_TESTING "Enable Test Builds" ON)
 
+find_package(Boost 1.70 REQUIRED COMPONENTS iostreams)
+
 add_subdirectory(src)
 
 if(ENABLE_TESTING)

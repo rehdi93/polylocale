@@ -1,7 +1,15 @@
 ﻿# tests
-find_package(Catch2 CONFIG REQUIRED)
-find_package(Boost 1.70 REQUIRED)
-
 add_executable(tester tests.cpp)
-target_link_libraries(tester PRIVATE polylocale Catch2::Catch2 Boost::boost)
+
+find_package(Catch2 CONFIG REQUIRED)
+target_link_libraries(tester PRIVATE polylocale Catch2::Catch2)
 target_include_directories(tester PRIVATE ${CMAKE_SOURCE_DIR}/src)
+
+# HACK
+if(Boost_FOUND AND NOT Boost_iostreams_FOUND)
+	target_include_directories(tester PUBLIC ${Boost_INCLUDE_DIRS})
+	target_link_libraries(tester PUBLIC ${Boost_LIBRARIES})
+else()
+	target_link_libraries(tester PRIVATE Boost::boost)
+endif()
+

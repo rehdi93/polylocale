@@ -1,12 +1,18 @@
 ﻿# src
-# public lib
-add_library(polylocale polylocale.cpp polylocale.h)
+add_library(polylocale 
+	polylocale.cpp polylocale.h
+	impl/printf.cpp impl/printf.hpp
+)
+target_compile_features(polylocale PUBLIC cxx_std_14)
 
-add_library(polyimpl STATIC impl/printf.cpp impl/printf.hpp)
-configure_file(impl/polyimpl.in.h impl/polyimpl.h)
-target_include_directories(polyimpl PUBLIC ${CMAKE_CURRENT_BINARY_DIR})
+configure_file(config.h.in config.h)
 
-find_package(Boost 1.70 REQUIRED COMPONENTS iostreams)
+target_include_directories(polylocale PUBLIC ${CMAKE_CURRENT_BINARY_DIR})
 
-target_link_libraries(polyimpl PUBLIC Boost::iostreams Boost::boost)
-target_link_libraries(polylocale PRIVATE polyimpl)
+# HACK
+if(Boost_FOUND AND NOT Boost_iostreams_FOUND)
+	target_include_directories(polylocale PRIVATE ${Boost_INCLUDE_DIRS})
+	target_link_libraries(polylocale PRIVATE ${Boost_LIBRARIES})
+else()
+	target_link_libraries(polylocale PRIVATE Boost::iostreams Boost::headers)
+endif()

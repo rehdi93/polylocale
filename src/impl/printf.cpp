@@ -6,6 +6,8 @@
 #include <array>
 #include <vector>
 #include <cassert>
+#include <cmath>
+#include <functional>
 
 #include "bitmask.hpp"
 
@@ -31,7 +33,6 @@ template <class T, std::size_t N>
 constexpr std::size_t countof(const T(&array)[N]) noexcept { return N; }
 
 }
-
 
 using namespace bitmask::ops;
 namespace bm = bitmask;
@@ -177,16 +178,7 @@ struct printf_arg
         switch (type)
         {
         case arg_type::char_t:
-            if (widthfield == arg_flags::wide)
-            {
-                auto& f = std::use_facet<std::ctype<wchar_t>>(os.getloc());
-                auto c = f.narrow(value.wchar);
-                os << c;
-            }
-            else
-            {
-                os << value.character;
-            }
+            os << value.character;
             break;
         case arg_type::int_t:
         {
@@ -217,11 +209,7 @@ struct printf_arg
             os << value.pointer;
             break;
         case arg_type::string:
-            if (widthfield == arg_flags::wide) {
-                put_str(os, value.wstring);
-            } else {
-                put_str(os, value.string);
-            }
+            put_str(os, value.string);
             break;
         case arg_type::byteswriten:
             // not implemented
@@ -326,15 +314,19 @@ private:
 
 };
 
-
-
-
-
 auto& operator << (std::ostream& os, const printf_arg& arg) {
     return arg.put(os);
 }
 
-static auto parsefmt(printf_arg& info, va_list& va) -> size_t;
+#ifdef __GNUC__
+using va_list_ref = va_list;
+#else
+using va_list_ref = va_list&;
+#endif
+
+
+
+static auto parsefmt(printf_arg& info, va_list_ref va) -> size_t;
 
 int red::polyloc::do_printf(string_view fmt, std::ostream& outs, const std::locale& loc, va_list va)
 {
@@ -462,10 +454,10 @@ after:
     return p;
 }
 
-size_t parsefmt(printf_arg& info, va_list& va)
+size_t parsefmt(printf_arg& info, va_list_ref va)
 {
     auto constexpr npos = std::string::npos;
-    const auto locale = info.locale;
+    const auto& locale = info.locale;
 
     auto i = parseflags(info);
 
@@ -562,13 +554,18 @@ size_t parsefmt(printf_arg& info, va_list& va)
         switch (info.fmtspec[i])
         {
         case 'C': // wide char TODO
-            info.type = arg_type::char_t;
             info.flags |= arg_flags::wide;
-            info.value = va_arg(va, wchar_t);
-            break;
         case 'c': // char
             info.type = arg_type::char_t;
+#ifdef __GNUC__
+            {
+                // special needs code for a special needs compiler
+                int ass = va_arg(va, int);
+                info.value = ass;
+            }
+#else
             info.value = va_arg(va, char);
+#endif
             break;
         case 'u': // Unsigned decimal integer
             info.iosflags |= ios::dec;
@@ -615,7 +612,8 @@ size_t parsefmt(printf_arg& info, va_list& va)
         case 'A': // hex float
             info.iosflags |= ios::uppercase;
         case 'a':
-            info.iosflags |= ios::hexfloat;
+            //info.iosflags |= ios::hexfloat;
+            info.iosflags |= (ios::fixed | ios::scientific);
             info.type = arg_type::float_t;
 
             goto common_float;
@@ -626,9 +624,6 @@ size_t parsefmt(printf_arg& info, va_list& va)
             break;
         case 'S': // wide string TODO
             info.flags |= arg_flags::wide;
-            info.type = arg_type::string;
-            info.value = va_arg(va, wchar_t*);
-            break;
         case 's': // string
             info.type = arg_type::string;
             info.value = va_arg(va, char*);

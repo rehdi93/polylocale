@@ -5,7 +5,7 @@
 #include <cstdarg>
 #include <iostream>
 
-#include "impl/polyimpl.h"
+#include "polyimpl.h"
 
 
 namespace red {
