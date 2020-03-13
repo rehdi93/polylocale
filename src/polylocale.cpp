@@ -1,6 +1,7 @@
 #include <locale>
 #include <sstream>
 #include <fstream>
+#include <cstdio>
 #include <string>
 #include <memory>
 #include <algorithm>
@@ -257,14 +258,28 @@ int poly_vfprintf_l(FILE* cfile, const char* fmt, poly_locale_s locale, va_list 
 {
     int result;
 
+    // convert FILE* to ostream
 #if defined(_MSC_VER)
     auto outs = std::ofstream(cfile);
+    result = red::polyloc::do_printf(fmt, outs, locale->impl->loc, args);
 #elif defined(__GNUC__)
     __gnu_cxx::stdio_filebuf<char> fbuf{ cfile, std::ios::out };
     std::ostream outs{ &fbuf };
+    result = red::polyloc::do_printf(fmt, outs, locale->impl->loc, args);
+#else
+    // Fallback
+    std::ostringstream outs;
+    red::polyloc::do_printf(fmt, outs, locale->impl->loc, args);
+    auto contents = outs.str();
+    result = std::fputs(contents.c_str(), cfile);
+    if (result == EOF) {
+        return -1;
+    }
+    else {
+        result = (int)contents.size();
+    }
 #endif
 
-    result = red::polyloc::do_printf(fmt, outs, locale->impl->loc, args);
     return result;
 }
 
