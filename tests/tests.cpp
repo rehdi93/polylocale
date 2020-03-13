@@ -30,9 +30,6 @@ using locale_ptr = std::unique_ptr<poly_locale, decltype(poly_freelocale)*>;
 
 // adapted from stb/tests/test_sprintf.c
 
-#ifndef SSIZE_MAX
-using ssize_t = std::make_signed<size_t>::type;
-#endif // !SSIZE_MAX
 
 struct sprintf_test_result
 {
@@ -63,14 +60,13 @@ sprintf_test_result do_test_sprintf(std::string expected, char* buf, size_t coun
     CAPTURE(tr.returnValue, tr.expected.size()); \
     REQUIRE(tr.expected == tr.result); }
     
-#define TEST_FMT(expected_, fmt, ...) FMT_TEST_BASE(expected_, fmt, buffer, size_t(-1), ploc, __VA_ARGS__);
-#define TEST_FMT_N(expected_, fmt, count, ...)  FMT_TEST_BASE(expected_, fmt, buffer, count, ploc, __VA_ARGS__)
+#define TEST_FMT(expected_, fmt, ...) FMT_TEST_BASE(expected_, fmt, buffer, size_t(-1), ploc, __VA_ARGS__)
 
 
 TEST_CASE("Formating integers", "[sprintf_l][format]")
 {
     auto localename = "C";
-    auto loc = locale_ptr(poly_newlocale(LC_ALL_MASK, localename, NULL), poly_freelocale);
+    auto loc = locale_ptr(poly_newlocale(POLY_ALL_MASK, localename, NULL), poly_freelocale);
     auto ploc = loc.get();
     char_buffer<1024> buffer{};
 
@@ -99,7 +95,7 @@ TEST_CASE("Formating integers", "[sprintf_l][format]")
 TEST_CASE("Formating floating point", "[sprintf_l][format]")
 {
     auto localename = "C";
-    poly_locale_s ploc = poly_newlocale(LC_ALL_MASK, localename, NULL);
+    poly_locale_s ploc = poly_newlocale(POLY_ALL_MASK, localename, NULL);
     char_buffer<1024> buffer{};
     const double pow_2_85 = 38685626227668133590597632.0;
 
@@ -137,7 +133,7 @@ TEST_CASE("Formating floating point", "[sprintf_l][format]")
 TEST_CASE("(new|free|dup)locale work", "[poly C]") {
     std::string locname = "C";
 
-    poly_locale_s ploc = poly_newlocale(LC_ALL_MASK, locname.c_str(), NULL);
+    poly_locale_s ploc = poly_newlocale(POLY_ALL_MASK, locname.c_str(), NULL);
     REQUIRE(ploc->name == locname);
 
     poly_locale_s ploc_copy = poly_duplocale(ploc);
@@ -153,7 +149,7 @@ TEST_CASE("other sprintf_l tests", "[sprintf_l]")
     char_buffer<1024> buffer{};
     std::string locname = "C";
 
-    auto ploc = poly_newlocale(LC_ALL_MASK, locname.c_str(), NULL);
+    auto ploc = poly_newlocale(POLY_ALL_MASK, locname.c_str(), NULL);
     std::locale::global(std::locale{ locname });
 
     REQUIRE(poly_sprintf_l(buffer, "%d  %600s", ploc, 3, "abc") == 603);
@@ -162,11 +158,11 @@ TEST_CASE("other sprintf_l tests", "[sprintf_l]")
 TEST_CASE("Size handler bug", "[sprintf_l][bug]")
 {
     auto localename = "C";
-    auto loc = locale_ptr(poly_newlocale(LC_ALL_MASK, localename, NULL), poly_freelocale);
+    auto loc = locale_ptr(poly_newlocale(POLY_ALL_MASK, localename, NULL), poly_freelocale);
     char_buffer<1024> buffer{};
 
     intmax_t j = -1;
-    ssize_t z = 2;
+    int z = 2;
     ptrdiff_t t = -3;
     std::string expected = "-1 2 -3", result;
 
@@ -182,7 +178,7 @@ TEST_CASE("Size handler bug", "[sprintf_l][bug]")
 
 TEST_CASE("snprintf_l tests", "[snprintf_l]") {
     auto localename = "C";
-    auto loc = locale_ptr(poly_newlocale(LC_ALL_MASK, localename, NULL), poly_freelocale);
+    auto loc = locale_ptr(poly_newlocale(POLY_ALL_MASK, localename, NULL), poly_freelocale);
     char_buffer<1024> buffer{};
     auto ploc = loc.get();
 
@@ -190,7 +186,12 @@ TEST_CASE("snprintf_l tests", "[snprintf_l]") {
 
     INFO("Locale: " << localename);
 
-    TEST_FMT_N(" b     123", " %s     %d", 100, "b", 123);
+    SECTION(R"(" %s     %d" --> " b     123")")
+    {
+        auto tr = do_test_sprintf(" b     123", buffer, 100, " %s     %d", loc.get(), "b", 123);
+        CAPTURE(tr.expected, tr.result, tr.format, tr.returnValue);
+        REQUIRE(tr.expected == tr.result);
+    }
 
     SECTION("Large float") {
         auto tr = do_test_sprintf("37778931862957161709568.000000", buffer, 100, "%f", ploc, pow_2_75);

@@ -3,7 +3,7 @@ add_library(polylocale
 	polylocale.cpp polylocale.h
 	impl/printf.cpp impl/printf.hpp
 )
-target_compile_features(polylocale PUBLIC cxx_std_14)
+target_compile_features(polylocale PUBLIC cxx_std_17)
 
 configure_file(config.h.in config.h)
 

@@ -9,6 +9,9 @@ if(MSVC)
 endif()
 
 option(ENABLE_TESTING "Enable Test Builds" ON)
+option(POLYLOC_UNDECORATED "Define names w/o poly_* prefix (#define newlocale poly_newlocale)")
+
+# TODO: if the C library conforms to X/Open, default to no undecorated names
 
 find_package(Boost 1.70 REQUIRED COMPONENTS iostreams)
 

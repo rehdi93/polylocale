@@ -16,6 +16,7 @@
 #include <ext/stdio_filebuf.h>
 #endif
 
+#define POLY_LC_ALL_MASK (LC_CTYPE_MASK | LC_NUMERIC_MASK | LC_TIME_MASK | LC_COLLATE_MASK | LC_MONETARY_MASK)
 
 struct poly_impl
 {
@@ -28,7 +29,7 @@ struct poly_impl
         : loc(lc), name(lc.name()) {}
 };
 
-using poly_locale_ptr = std::unique_ptr<poly_locale>;
+using poly_locale_ptr = std::unique_ptr<poly_locale, decltype(poly_freelocale)*>;
 
 
 static auto make_polylocale(std::locale const& base) {
@@ -49,26 +50,27 @@ static auto make_polylocale(poly_locale_s loc) {
 }
 
 
+
 static auto mask_to_cat(int mask) noexcept -> std::locale::category
 {
     using Lc = std::locale;
 
-    if (mask == LC_ALL_MASK)
+    if (mask == POLY_ALL_MASK)
         return Lc::all;
-    else if ((LC_ALL_MASK & mask) == 0)
+    else if ((POLY_ALL_MASK & mask) == 0)
         return -1; // mask contains an unknown bit
 
     std::locale::category cat{0};
 
-    if ((mask & LC_CTYPE_MASK) != 0)
+    if ((mask & POLY_CTYPE_MASK) != 0)
         cat |= Lc::ctype;
-    if ((mask & LC_NUMERIC_MASK) != 0)
+    if ((mask & POLY_NUMERIC_MASK) != 0)
         cat |= Lc::numeric;
-    if ((mask & LC_TIME_MASK) != 0)
+    if ((mask & POLY_TIME_MASK) != 0)
         cat |= Lc::time;
-    if ((mask & LC_COLLATE_MASK) != 0)
+    if ((mask & POLY_COLLATE_MASK) != 0)
         cat |= Lc::collate;
-    if ((mask & LC_MONETARY_MASK) != 0)
+    if ((mask & POLY_MONETARY_MASK) != 0)
         cat |= Lc::monetary;
 
     return cat;
@@ -254,10 +256,6 @@ int poly_fprintf_l(FILE* fs, const char* format, poly_locale_s locale, ...)
 int poly_vfprintf_l(FILE* cfile, const char* fmt, poly_locale_s locale, va_list args)
 {
     int result;
-
-    // TODO: FILE* to stream in other platforms
-    // libstdc++ (stdio_filebuf) https://gcc.gnu.org/onlinedocs/gcc-9.2.0/libstdc++/api/a10659.html
-    // libc++ (???) 
 
 #if defined(_MSC_VER)
     auto outs = std::ofstream(cfile);
