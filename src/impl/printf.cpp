@@ -17,8 +17,6 @@ using std::ios;
 namespace
 {
 
-constexpr auto STREAM_MAX = std::numeric_limits<std::streamsize>::max();
-
 constexpr char FMT_START    = '%';
 constexpr char FMT_ALL[]    = "%.*" "-+ #0" "hljztI" "CcudioXxEeFfGgAapSsn";
 constexpr char FMT_FLAGS[]  = "-+ #0";
@@ -37,19 +35,26 @@ constexpr std::size_t countof(const T(&array)[N]) noexcept { return N; }
 using namespace bitmask::ops;
 namespace bm = bitmask;
 
+#ifdef __GNUC__
+using va_list_ref = va_list;
+#else
+using va_list_ref = va_list&;
+#endif
+
 enum class arg_flags : unsigned short
 {
     none,
     is_signed = 1 << 0,
     is_unsigned = 1 << 1,
     wide = 1 << 2,
-    blankpos = 1 << 4,
-    showpos = 1 << 5,
+    narrow = 1<<3,
+    blankpos = 1 << 6,
+    showpos = 1 << 7,
 
     altform = 1 << 9, // ios::showbase for ints, ios::showpoint for floats
 
     signfield = is_signed | is_unsigned,
-    sizefield = wide,
+    sizefield = wide|narrow,
     posfield = blankpos|showpos
 };
 
@@ -91,6 +96,28 @@ struct stream_state
     }
 };
 
+struct fmtspec_t
+{
+    red::string_view fmt;
+    red::string_view flags, length_mod;
+    int field_width = -1, precision = -1;
+    char conversion = '\030';
+
+
+    bool valid() const
+    {
+        return conversion != '\030';
+    }
+
+    bool has_flag(char f) const {
+        return flags.find(f) != std::string::npos;
+    }
+
+    static const int VAL_VA = -(int)'*', VAL_AUTO = -1;
+};
+
+static fmtspec_t parsefmt(const std::string& str, std::locale const& locale);
+
 // holds info about the current spec being parsed
 struct printf_arg
 {
@@ -99,146 +126,236 @@ struct printf_arg
     // worst case scenerio sizes:
     // 1 + 4  +  10 +  1 +  10  +   3  + 1 = 30
     // 10 is from INT_MAX
-    explicit printf_arg(const std::string& stor, const std::locale& loc)
-        : fmtspec(stor), locale(loc)
+    printf_arg(const std::string& stor, std::locale const& locale, va_list_ref args)
+    : fmtspec(parsefmt(stor, locale)), va(args)
     {
     }
 
-    union values_u {
-        char character;
-        char* string;
-        wchar_t wchar;
-        wchar_t* wstring;
-        void* pointer;
 
-        intmax_t integer;
-        uintmax_t unsigned_integer;
-
-        long double floatpt;
-
-        // ----
-        void set(char c) { character = c; }
-        void set(char* s) { string = s; }
-        void set(wchar_t c) { wchar = c; }
-        void set(wchar_t* s) { wstring = s; }
-        void set(int64_t i) { integer = i; }
-        void set(int32_t i) { integer = i; }
-        void set(uint64_t i) { unsigned_integer = i; }
-        void set(uint32_t i) { unsigned_integer = i; }
-        void set(double d) { floatpt = d; }
-        void set(long double d) { floatpt = d; }
-        void set(void* p) { pointer = p; }
-        // ----
-
-
-        template<typename T>
-        values_u(T value) {
-            set(value);
-        }
-
-        values_u() = default;
-    };
-
-
-    arg_type type{};
-    arg_flags flags{};
-    ios::fmtflags iosflags{};
-    char fill = ' ';
-    int fieldw = -1, precision = -1; // auto
-    std::locale const& locale;
-
-    std::string const& fmtspec;
-    values_u value;
-
-    
-    // sets arg_flags::wide if sizeof(T)==8
-    template<typename T>
-    constexpr void set_sizem() 
-    {
-        if (sizeof(T)==8)
-        {
-            flags |= arg_flags::wide;
-        }
-    }
-
+    arg_flags aflags{};
+    fmtspec_t fmtspec;
+    va_list_ref va;
 
     // print value
-    auto& put(std::ostream& os) const
+    auto put(std::ostream& outs)
     {
-        stream_state state = os;
+        stream_state _ = outs;
 
-        const auto signfield = (flags & arg_flags::signfield);
-        const auto widthfield = (flags & arg_flags::sizefield);
+        outs.fill(' ');
 
-        os.flags(iosflags);
-        os.width(fieldw != -1 ? fieldw : 0);
-        os.precision(precision != -1 ? precision : 0);
-        os.fill(fill);
+        setup(outs);
 
-        switch (type)
+        switch (fmtspec.conversion)
         {
-        case arg_type::char_t:
-            os << value.character;
-            break;
-        case arg_type::int_t:
-        {
-            if (widthfield == arg_flags::wide)
-            {
-                if (signfield == arg_flags::is_signed) {
-                    put_int(os, int64_t(value.integer));
-                }
-                else {
-                    put_int(os, uint64_t(value.unsigned_integer));
-                }
+        case 'C': // wide char TODO
+            aflags |= arg_flags::wide;
+        case 'c': // char
+            if (bm::has(aflags, arg_flags::wide)) {
+                auto v = va_arg(va, wint_t);
+                wchar_t cp[1] = { (wchar_t)v };
+                put_str(outs, { cp, 1 });
             }
-            else
-            {
-                if (signfield == arg_flags::is_signed) {
-                    put_int(os, int32_t(value.integer));
-                }
-                else {
-                    put_int(os, uint32_t(value.unsigned_integer));
-                }
+            else {
+                auto v = va_arg(va, int);
+                char cp[1] = { (char)v };
+                put_str(outs, { cp, 1 });
             }
-        }
             break;
-        case arg_type::float_t:
-            put_fp(os, value.floatpt);
+
+        case 'u': // Unsigned decimal integer
+            outs << std::dec;
+            goto common_uint;
+
+        case 'd': // Signed decimal integer
+        case 'i':
+            outs << std::dec;
+            aflags |= arg_flags::is_signed;
+
+            if (bitmask::has(aflags, arg_flags::wide)) {
+                put_int(outs, va_arg(va, int64_t));
+            }
+            else {
+                put_int(outs, va_arg(va, int32_t));
+            }
             break;
-        case arg_type::pointer:
-            os << value.pointer;
+
+        case 'o': // Unsigned octal integer
+            outs << std::oct;
+            goto common_uint;
+
+        case 'X': // Unsigned hexadecimal integer w/ uppercase letters
+            outs.setf(ios::uppercase);
+        case 'x': // Unsigned hexadecimal integer w/ lowercase letters
+            outs << std::hex;
+            goto common_uint;
+
+        case 'E': // float, scientific notation
+            outs.setf(ios::uppercase);
+        case 'e':
+            outs << std::scientific;
+            put_fp(outs, va_arg(va, double));
             break;
-        case arg_type::string:
-            put_str(os, value.string);
+
+        case 'F': // float, fixed notation
+            outs.setf(ios::uppercase);
+        case 'f':
+            outs << std::fixed;
+            put_fp(outs, va_arg(va, double));
             break;
-        case arg_type::byteswriten:
-            // not implemented
+
+        case 'G': // float, general notation
+            outs.setf(ios::uppercase);
+        case 'g':
+            outs << std::defaultfloat;
+            put_fp(outs, va_arg(va, double));
+            break;
+
+        case 'A': // hex float
+            outs.setf(ios::uppercase);
+        case 'a':
+            outs << std::hexfloat;
+            put_fp(outs, va_arg(va, double));
+            break;
+
+        case 'p': // pointer
+            outs << std::hex << va_arg(va, void*);
+            break;
+
+        case 'S': // wide string TODO
+            aflags |= arg_flags::wide;
+            put_str(outs, va_arg(va, wchar_t*));
+            break;
+        case 's': // string
+            put_str(outs, va_arg(va, char*));
+            break;
+
+        case 'n': // weird write-bytes specifier (not implemented)
+            //value = va_arg(va, void*);
+            break;
+
+            // https://docs.microsoft.com/en-us/cpp/c-runtime-library/format-specification-syntax-printf-and-wprintf-functions?view=vs-2019#argument-size-specification
+            // integer args w/o size spec are treated as 32bit
+        common_uint:
+            aflags |= arg_flags::is_unsigned;
+
+            if (bitmask::has(aflags, arg_flags::wide)) {
+                put_int(outs, va_arg(va, uint64_t));
+            }
+            else {
+                put_int(outs, va_arg(va, uint32_t));
+            }
+            break;
         default:
             // invalid, print fmt as-is minus %
-            auto v = red::string_view(fmtspec).substr(1);
-            os << v;
+            outs << fmtspec.fmt.substr(1);
             break;
         }
-
-        return os;
     }
 
 private:
-    void put_fp(std::ostream& os, double number) const
+    void setup(std::ostream& os)
     {
-        if (bm::has(flags, arg_flags::altform)) {
-            os << std::showpoint;
+        for (auto f : fmtspec.flags)
+        {
+            switch (f)
+            {
+            case '-': // left justify
+                os << std::left;
+                break;
+            case '+': // show positive sign
+                //bm::setm(aflags, arg_flags::showpos, arg_flags::posfield);
+                os << std::showpos;
+                break;
+            case ' ': // Use a blank to prefix the output value if it is signed and positive, 
+                bm::setm(aflags, arg_flags::blankpos, arg_flags::posfield);
+                break;
+            case '#':
+                aflags |= arg_flags::altform;
+                break;
+            case '0':
+                os.fill('0');
+                break;
+            default:
+                break;
+            }
         }
 
-        const auto posfield = (flags & arg_flags::posfield);
+        // ' ' has no effect if '+' is set
+        if (bm::has(os.flags(), ios::showpos))
+        {
+            aflags &= ~arg_flags::blankpos;
+        }
+
+        if (fmtspec.field_width == fmtspec.VAL_VA)
+            fmtspec.field_width = va_arg(va, int);
+
+        if (fmtspec.precision == fmtspec.VAL_VA)
+            fmtspec.precision = va_arg(va, int);
+
+        os.width(fmtspec.field_width > 0 ? fmtspec.field_width : 0);
+        os.precision(fmtspec.precision > 0 ? fmtspec.precision : 0);
+
+        if (!fmtspec.length_mod.empty())
+        {
+            if (fmtspec.length_mod == "h")
+            {
+                // halfwidth
+                aflags |= arg_flags::narrow;
+            }
+            else if (fmtspec.length_mod == "hh")
+            {
+                // quarterwidth
+            }
+            // are we 64-bit (unix style)
+            else if (fmtspec.length_mod == "l")
+            {
+                if (sizeof(long) == 8)
+                    aflags |= arg_flags::wide;
+            }
+            else if (fmtspec.length_mod == "ll")
+            {
+                aflags |= arg_flags::wide;
+            }
+            // are we 64-bit on intmax_t? (c99)
+            else if (fmtspec.length_mod == "j")
+            {
+                if (sizeof(size_t) == 8)
+                    aflags |= arg_flags::wide;
+            }
+            // are we 64-bit on size_t or ptrdiff_t? (c99)
+            else if (fmtspec.length_mod == "z" || fmtspec.length_mod == "t")
+            {
+                if (sizeof(ptrdiff_t) == 8)
+                    aflags |= arg_flags::wide;
+            }
+            // are we 64-bit (msft style)
+            else if (fmtspec.length_mod == "I64")
+            {
+                aflags |= arg_flags::wide;
+            }
+            else if (fmtspec.length_mod == "I32")
+            {
+                if (sizeof(void*) == 8)
+                    aflags |= arg_flags::wide;
+            }
+        }
+    }
+
+    void put_fp(std::ostream& os, double number) const
+    {
+        if (bm::has(aflags, arg_flags::altform)) {
+            os.setf(ios::showpoint);
+        }
+
+        const auto posfield = (aflags & arg_flags::posfield);
         if (posfield == arg_flags::blankpos && number >= 0)
             os.put(' ');
 
-        if (precision == -1)
+        if (fmtspec.precision == -1)
         {
             os.precision(6);
         }
-        else if (precision == 0)
+        else if (fmtspec.precision == 0)
         {
             number = std::round(number);
         }
@@ -257,13 +374,14 @@ private:
     }
 
     void put_str(std::ostream& os, red::string_view str) const {
-        if (precision > 0)
+        if (fmtspec.precision > 0)
         {
-            str = str.substr(0, precision);
+            str = str.substr(0, fmtspec.precision);
         }
 
         os << str;
     }
+
 
     template<class I>
     using is_int = std::enable_if_t<std::is_integral<I>::value>;
@@ -271,32 +389,35 @@ private:
     template<typename T, class = is_int<T>>
     void put_int(std::ostream& os, T val) const
     {
-        const auto posfield = (flags & arg_flags::posfield);
+        const auto posfield = (aflags & arg_flags::posfield);
+        if (bm::has(aflags, arg_flags::altform)) {
+            os << std::showbase;
+        }
 
         bool skip = false;
-        if (precision <= 0 && val == 0)
+        if (fmtspec.precision <= 0 && val == 0)
         {
-            if (bitmask::has_all(iosflags, ios::oct | ios::showbase))
+            if (bitmask::has_all(os.flags(), ios::oct | ios::showbase))
             {
                 // for octal, if both the converted value and the precision are ​0​, single ​0​ is written.
                 os << 0;
                 skip = true;
             }
-            else if (posfield != arg_flags::showpos)
+            else if (!bm::has(os.flags(), ios::showpos))
             {
                 skip = true;
             }
         }
 
-        if (posfield == arg_flags::blankpos && val >= 0 && fieldw < 2)
+        if (posfield == arg_flags::blankpos && val >= 0 && fmtspec.field_width < 2)
             os.put(' ');
 
         if (skip)
             return;
 
-        if (precision > 0)
+        if (fmtspec.precision > 0)
         {
-            auto remainingW = std::max(fieldw - precision, 0);
+            auto remainingW = std::max(fmtspec.field_width - fmtspec.precision, 0);
             if (remainingW > 0)
             {
                 char s = ' ';
@@ -305,7 +426,7 @@ private:
                 os << s;
             }
 
-            os.width(precision);
+            os.width(fmtspec.precision);
             os.fill('0');
         }
 
@@ -314,19 +435,7 @@ private:
 
 };
 
-auto& operator << (std::ostream& os, const printf_arg& arg) {
-    return arg.put(os);
-}
 
-#ifdef __GNUC__
-using va_list_ref = va_list;
-#else
-using va_list_ref = va_list&;
-#endif
-
-
-
-static auto parsefmt(printf_arg& info, va_list_ref va) -> size_t;
 
 int red::polyloc::do_printf(string_view fmt, std::ostream& outs, const std::locale& loc, va_list va)
 {
@@ -364,13 +473,13 @@ int red::polyloc::do_printf(string_view fmt, std::ostream& outs, const std::loca
             outs << txtb4;
 
             // possible fmtspec(s)
-            const auto end = format.find_first_of(FMT_TYPES, i + 1) + 1;
-            spec.assign(format.data() + i, end - i);
-
             // %[flags][width][.precision][size]type
-            printf_arg info{ spec, loc };
-            parsefmt(info, va);
-            outs << info;
+            const auto end = format.find_first_of(FMT_TYPES, i + 1) + 1;
+            auto part = format.substr(i, end - i);
+            spec.assign(part);
+            
+            printf_arg arg{ spec, loc, va };
+            arg.put(outs);
 
             i += spec.size();
             format.remove_prefix(i);
@@ -406,286 +515,77 @@ auto red::polyloc::do_printf(string_view format, std::ostream& outs, size_t max,
     return ret;
 }
 
-static size_t parseflags(printf_arg& info)
-{
-    red::string_view spec = info.fmtspec;
 
-    assert(spec[0] == FMT_START);
-    size_t i = 0, p = 1;
-
-    while (i = spec.find_first_of(FMT_FLAGS) != std::string::npos)
-    {
-        switch (spec[i])
-        {
-        case '-': // left justify
-            info.iosflags |= ios::left;
-            break;
-        case '+': // show positive sign
-            bm::setm(info.flags, arg_flags::showpos, arg_flags::posfield);
-            break;
-        case ' ': // Use a blank to prefix the output value if it is signed and positive, 
-            bm::setm(info.flags, arg_flags::blankpos, arg_flags::posfield);
-            break;
-        case '#':
-            info.flags |= arg_flags::altform;
-            break;
-        case '0':
-            if (i == 1)
-                info.fill = '0';
-            else {
-                // not a flag, but part of the width spec
-                goto after;
-            }
-            break;
-        default:
-            goto after;
-        }
-
-        spec.remove_prefix(i);
-        p += i;
-    }
-
-after:
-    if ((info.flags & arg_flags::posfield) == arg_flags::showpos)
-    {
-        info.iosflags |= ios::showpos;
-    }
-    
-    return p;
-}
-
-size_t parsefmt(printf_arg& info, va_list_ref va)
+fmtspec_t parsefmt(const std::string& str, std::locale const& locale)
 {
     auto constexpr npos = std::string::npos;
-    const auto& locale = info.locale;
 
-    auto i = parseflags(info);
+    fmtspec_t fmtspec{ str };
+    red::string_view spec = fmtspec.fmt;
+    assert(spec[0] == FMT_START);
 
-    // get field width (optional)
-    if (info.fmtspec[i] == FMT_FROM_VA)
+    size_t start=1, end=0;
+
+    // Flags
+    end = spec.find_first_not_of(FMT_FLAGS, start);
+    if (end != npos)
     {
-        info.fieldw = va_arg(va, int);
-        i++;
+        fmtspec.flags = spec.substr(start, end - start);
     }
-    else if (std::isdigit(info.fmtspec[i], locale))
+    else end = start;
+
+
+    // field width
+    if (spec[end] == FMT_FROM_VA)
     {
-        size_t converted;
+        fmtspec.field_width = fmtspec.VAL_VA;
+        end++;
+    }
+    else if (std::isdigit(spec[end], locale))
+    {
         try {
-            info.fieldw = std::stoi(info.fmtspec.substr(i), &converted);
-            i += converted;
+            size_t converted;
+            fmtspec.field_width = std::stoi(str.substr(end), &converted);
+            end += converted;
         }
         catch (const std::exception&) {
             // no conversion took place
         }
     }
 
-    // get precision (optional)
-    if (info.fmtspec[i] == FMT_PRECISION)
+    if (spec[end] == FMT_PRECISION)
     {
-        i++;
-        if (info.fmtspec[i] == FMT_FROM_VA)
+        end++;
+        if (spec[end] == FMT_FROM_VA)
         {
-            info.precision = va_arg(va, int);
-            i++;
+            fmtspec.precision = fmtspec.VAL_VA;
+            end++;
         }
-        else if (std::isdigit(info.fmtspec[i], locale)) try
+        else if (std::isdigit(spec[end], locale)) try
         {
             size_t converted;
-            info.precision = std::stoi(info.fmtspec.substr(i), &converted);
-            i += converted;
+            fmtspec.precision = std::stoi(str.substr(end), &converted);
+            end += converted;
         }
         catch (const std::exception&) {
             // no conversion took place
         }
     }
 
-    // handle size overrides (optional)
-    // this decides between int32/int64, float/double
-    bool auto_size = false;
-    auto prev = i;
-    i = info.fmtspec.find_first_of(FMT_SIZES, i);
-    if (i != npos)
+    // size overrides
+    start = spec.find_first_of(FMT_SIZES, end);
+    if (start != npos)
     {
-        switch (info.fmtspec[i++])
-        {
-        case 'h': // halfwidth
-            /*info.flags = arg_flags::narrow;*/
-            if (info.fmtspec[i] == 'h')
-                i++; // QUARTERWIDTH
-            break;
-        case 'l':  // are we 64-bit (unix style)
-            if (info.fmtspec[i] == 'l') {
-                info.flags |= arg_flags::wide;
-                i++;
-            }
-            else {
-                info.set_sizem<long>();
-            }
-            break;
-        case 'j': // are we 64-bit on intmax_t? (c99)
-            info.set_sizem<size_t>();
-            break;
-        case 'z': // are we 64-bit on size_t or ptrdiff_t? (c99)
-        case 't':
-            info.set_sizem<ptrdiff_t>();
-            break;
-        case 'I': // are we 64-bit (msft style)
-            if (info.fmtspec[i] == '6' && info.fmtspec[i+1] == '4') {
-                info.flags |= arg_flags::wide;
-                i++;
-            }
-            else if (info.fmtspec[i] == '3' && info.fmtspec[i+1] == '2') {
-                info.set_sizem<void*>();
-                i++;
-            }
-            break;
-        }
-    }
-    else {
-        i = prev;
-        auto_size = true;
+        end = spec.find_first_not_of(FMT_SIZES, start);
+        fmtspec.length_mod = red::string_view(str).substr(start, end-start);
     }
 
-    // handle type, extract properties and value
-    prev = i;
-    i = info.fmtspec.find_first_of(FMT_TYPES, i);
-    if (i != npos)
-    {
-        switch (info.fmtspec[i])
-        {
-        case 'C': // wide char TODO
-            info.flags |= arg_flags::wide;
-        case 'c': // char
-            info.type = arg_type::char_t;
-#ifdef __GNUC__
-            {
-                // special needs code for a special needs compiler
-                int ass = va_arg(va, int);
-                info.value = ass;
-            }
-#else
-            info.value = va_arg(va, char);
-#endif
-            break;
-        case 'u': // Unsigned decimal integer
-            info.iosflags |= ios::dec;
-            info.type = arg_type::int_t;
-            goto common_uint;
-        case 'd': // Signed decimal integer
-        case 'i':
-            info.iosflags |= ios::dec;
-            info.type = arg_type::int_t;
-
-            goto common_int;
-        case 'o': // Unsigned octal integer
-            info.type = arg_type::int_t;
-            info.iosflags |= ios::oct;
-
-            goto common_uint;
-        case 'X': // Unsigned hexadecimal integer w/ uppercase letters
-            info.iosflags |= ios::uppercase;
-        case 'x': // Unsigned hexadecimal integer w/ lowercase letters
-            info.iosflags |= ios::hex;
-            info.type = arg_type::int_t;
-            
-            goto common_uint;
-        case 'E': // float, scientific notation
-            info.iosflags |= ios::uppercase;
-        case 'e':
-            info.iosflags |= ios::scientific;
-            info.type = arg_type::float_t;
-            goto common_float;
-        case 'F': // float, fixed notation
-            info.iosflags |= ios::uppercase;
-        case 'f':
-            info.iosflags |= ios::fixed;
-            info.type = arg_type::float_t;
-
-            goto common_float;
-        case 'G': // float, general notation
-            info.iosflags |= ios::uppercase;
-        case 'g':
-            info.iosflags &= ~ios::floatfield;
-            info.type = arg_type::float_t;
-
-            goto common_float;
-        case 'A': // hex float
-            info.iosflags |= ios::uppercase;
-        case 'a':
-            //info.iosflags |= ios::hexfloat;
-            info.iosflags |= (ios::fixed | ios::scientific);
-            info.type = arg_type::float_t;
-
-            goto common_float;
-        case 'p': // pointer
-            info.iosflags |= ios::hex;
-            info.type = arg_type::pointer;
-            info.value = va_arg(va, void*);
-            break;
-        case 'S': // wide string TODO
-            info.flags |= arg_flags::wide;
-        case 's': // string
-            info.type = arg_type::string;
-            info.value = va_arg(va, char*);
-            break;
-        case 'n': // weird write-bytes specifier (not implemented)
-            info.value = va_arg(va, void*);
-            info.type = arg_type::byteswriten;
-            break;
-
-        // https://docs.microsoft.com/en-us/cpp/c-runtime-library/format-specification-syntax-printf-and-wprintf-functions?view=vs-2019#argument-size-specification
-        // integer args w/o size spec are treated as 32bit
-        common_int:
-            info.flags |= arg_flags::is_signed;
-
-            if (bm::has(info.flags, arg_flags::altform)) {
-                info.iosflags |= ios::showbase;
-            }
-
-            if (bitmask::has(info.flags, arg_flags::wide)) {
-                info.value = va_arg(va, int64_t);
-            }
-            else {
-                info.value = va_arg(va, int32_t);
-            }
-            break;
-        common_uint:
-            info.flags |= arg_flags::is_unsigned;
-
-            if (bm::has(info.flags, arg_flags::altform)) {
-                info.iosflags |= ios::showbase;
-            }
-
-            if (bitmask::has(info.flags, arg_flags::wide)) {
-                info.value = va_arg(va, uint64_t);
-            }
-            else {
-                info.value = va_arg(va, uint32_t);
-            }
-            break;
-        // floating point types w/o size spec are treated as 64bit
-        common_float:
-            if (auto_size) {
-                info.flags |= arg_flags::wide;
-            }
-            if (bm::has(info.flags, arg_flags::altform)) {
-                info.iosflags |= ios::showpoint;
-            }
-
-            auto a = va_arg(va, double);
-            info.flags |= a >= 0 ? arg_flags::is_signed : arg_flags::is_unsigned;
-            info.value = a;
-            break;
-        }
-
-        return i + 1;
-    }
+    // conversion spec
+    start = spec.find_first_of(FMT_TYPES, end);
+    if (start != npos)
+        fmtspec.conversion = spec.at(start);
     else
-    {
-        // couldn't find type specifier
-        info.type = arg_type::unknown;
-        info.flags = arg_flags::none;
-        info.iosflags = ios::fmtflags{};
-        return npos;
-    }
+        fmtspec.conversion = '\030';
+
+    return fmtspec;
 }
