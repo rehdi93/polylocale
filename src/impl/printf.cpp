@@ -3,11 +3,9 @@
 #include <sstream>
 #include <iomanip>
 #include <cstddef>
-#include <array>
-#include <vector>
+#include <algorithm>
 #include <cassert>
 #include <cmath>
-#include <functional>
 
 #include "bitmask.hpp"
 
@@ -44,29 +42,13 @@ using va_list_ref = va_list&;
 enum class arg_flags : unsigned short
 {
     none,
-    is_signed = 1 << 0,
-    is_unsigned = 1 << 1,
     wide = 1 << 2,
     narrow = 1<<3,
     blankpos = 1 << 6,
-    showpos = 1 << 7,
 
     altform = 1 << 9, // ios::showbase for ints, ios::showpoint for floats
 
-    signfield = is_signed | is_unsigned,
-    sizefield = wide|narrow,
-    posfield = blankpos|showpos
-};
-
-enum class arg_type : unsigned char
-{
-    unknown = 0,
-    char_t = 'c',
-    int_t = 'i',
-    float_t = 'g',
-    pointer = 'p',
-    string = 's',
-    byteswriten = 'n'
+    sizefield = wide|narrow
 };
 
 struct stream_state
@@ -96,6 +78,10 @@ struct stream_state
     }
 };
 
+// %[flags][width][.precision][size]type
+// worst case scenerio sizes:
+// 1 + 4  +  10 +  1 +  10  +   3  + 1 = 30
+// 10 is from INT_MAX
 struct fmtspec_t
 {
     red::string_view fmt;
@@ -118,14 +104,10 @@ struct fmtspec_t
 
 static fmtspec_t parsefmt(const std::string& str, std::locale const& locale);
 
-// holds info about the current spec being parsed
+// holds the context required to parse the fmtspec and print it to an ostream
 struct printf_arg
 {
     
-    // %[flags][width][.precision][size]type
-    // worst case scenerio sizes:
-    // 1 + 4  +  10 +  1 +  10  +   3  + 1 = 30
-    // 10 is from INT_MAX
     printf_arg(const std::string& stor, std::locale const& locale, va_list_ref args)
     : fmtspec(parsefmt(stor, locale)), va(args)
     {
@@ -140,8 +122,6 @@ struct printf_arg
     auto put(std::ostream& outs)
     {
         stream_state _ = outs;
-
-        outs.fill(' ');
 
         setup(outs);
 
@@ -169,7 +149,6 @@ struct printf_arg
         case 'd': // Signed decimal integer
         case 'i':
             outs << std::dec;
-            aflags |= arg_flags::is_signed;
 
             if (bitmask::has(aflags, arg_flags::wide)) {
                 put_int(outs, va_arg(va, int64_t));
@@ -236,8 +215,6 @@ struct printf_arg
             // https://docs.microsoft.com/en-us/cpp/c-runtime-library/format-specification-syntax-printf-and-wprintf-functions?view=vs-2019#argument-size-specification
             // integer args w/o size spec are treated as 32bit
         common_uint:
-            aflags |= arg_flags::is_unsigned;
-
             if (bitmask::has(aflags, arg_flags::wide)) {
                 put_int(outs, va_arg(va, uint64_t));
             }
@@ -263,11 +240,10 @@ private:
                 os << std::left;
                 break;
             case '+': // show positive sign
-                //bm::setm(aflags, arg_flags::showpos, arg_flags::posfield);
                 os << std::showpos;
                 break;
             case ' ': // Use a blank to prefix the output value if it is signed and positive, 
-                bm::setm(aflags, arg_flags::blankpos, arg_flags::posfield);
+                aflags |= arg_flags::blankpos;
                 break;
             case '#':
                 aflags |= arg_flags::altform;
@@ -347,8 +323,7 @@ private:
             os.setf(ios::showpoint);
         }
 
-        const auto posfield = (aflags & arg_flags::posfield);
-        if (posfield == arg_flags::blankpos && number >= 0)
+        if (bm::has(aflags, arg_flags::blankpos) && number >= 0)
             os.put(' ');
 
         if (fmtspec.precision == -1)
@@ -389,7 +364,6 @@ private:
     template<typename T, class = is_int<T>>
     void put_int(std::ostream& os, T val) const
     {
-        const auto posfield = (aflags & arg_flags::posfield);
         if (bm::has(aflags, arg_flags::altform)) {
             os << std::showbase;
         }
@@ -409,7 +383,7 @@ private:
             }
         }
 
-        if (posfield == arg_flags::blankpos && val >= 0 && fmtspec.field_width < 2)
+        if (bm::has(aflags, arg_flags::blankpos) && val >= 0 && fmtspec.field_width < 2)
             os.put(' ');
 
         if (skip)

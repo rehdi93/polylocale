@@ -89,7 +89,7 @@ TEST_CASE("Formating integers", "[sprintf_l][format]")
     TEST_FMT("", "%.0d", 0);
     TEST_FMT("33 555", "%hi %ld", (short)33, 555l);
     TEST_FMT("9888777666", "%llu", 9888777666llu);
-    //TEST_FMT("-1 2 -3", "%ji %zi %ti", (intmax_t)-1, (ssize_t)2, (ptrdiff_t)-3);
+    TEST_FMT("what? 22", "what? %zi", 22);
 }
 
 TEST_CASE("Formating floating point", "[sprintf_l][format]")
