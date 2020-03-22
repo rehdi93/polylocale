@@ -73,6 +73,7 @@ TEST_CASE("Formating integers", "[sprintf_l][format]")
     INFO("Locale: " << localename);
 
     TEST_FMT("0177 0", "%# +o %#o", 127, 0);
+    TEST_FMT("bad fmt:  -.3M", "bad fmt: % -.3M", 321.1);
     TEST_FMT("a b     1", "%c %s     %d", 'a', "b", 1);
     TEST_FMT("abc     ", "%-8.3s", "abcdefgh");
     TEST_FMT("+5", "%+2d", 5);

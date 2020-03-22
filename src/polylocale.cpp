@@ -17,8 +17,6 @@
 #include <ext/stdio_filebuf.h>
 #endif
 
-#define POLY_LC_ALL_MASK (LC_CTYPE_MASK | LC_NUMERIC_MASK | LC_TIME_MASK | LC_COLLATE_MASK | LC_MONETARY_MASK)
-
 struct poly_impl
 {
     std::locale loc;
@@ -30,12 +28,10 @@ struct poly_impl
         : loc(lc), name(lc.name()) {}
 };
 
-using poly_locale_ptr = std::unique_ptr<poly_locale, decltype(poly_freelocale)*>;
 
 
 static auto make_polylocale(std::locale const& base) {
     auto plc = std::make_unique<poly_locale>();
-    
     plc->impl = new poly_impl{ base };
     plc->name = plc->impl->name.c_str();
     
@@ -50,7 +46,13 @@ static auto make_polylocale(poly_locale_s loc) {
     return plc;
 }
 
+static auto getloc(poly_locale_s ploc) -> std::locale
+{
+    if (ploc == POLY_GLOBAL_LOCALE)
+        return {};
 
+    return ploc->impl->loc;
+}
 
 static auto mask_to_cat(int mask) noexcept -> std::locale::category
 {
@@ -93,7 +95,7 @@ poly_locale_s poly_newlocale(int category_mask, const char* localename, poly_loc
 
         if (base)
         {
-            auto& loc = base->impl->loc;
+            auto loc = getloc(base);
 
             *base->impl = poly_impl(std::locale(loc, localename, cats));
             base->name = base->impl->name.c_str();
@@ -150,10 +152,10 @@ poly_locale_s poly_duplocale(poly_locale_s loc)
 
 // ---
 
-double poly_strtod_l(const char* str, char** endptr, poly_locale_s locale)
+double poly_strtod_l(const char* str, char** endptr, poly_locale_s ploc)
 {
     std::istringstream ss{str};
-    ss.imbue(locale->impl->loc);
+    ss.imbue(getloc(ploc));
 
     double num;
     ss >> num;
@@ -191,7 +193,7 @@ int poly_printf_l(const char* fmt, poly_locale_s locale, ...)
 int poly_vprintf_l(const char* fmt, poly_locale_s locale, va_list args)
 {
     std::ostringstream tmp;
-    red::polyloc::do_printf(fmt, tmp, locale->impl->loc, args);
+    red::polyloc::do_printf(fmt, tmp, getloc(locale), args);
     auto contents = tmp.str();
     auto result = (int)contents.size();
     std::cout << contents;
@@ -214,7 +216,7 @@ int poly_sprintf_l(char* buffer, const char* fmt, poly_locale_s loc, ...)
 int poly_vsprintf_l(char* buffer, const char* fmt, poly_locale_s loc, va_list args)
 {
     std::ostringstream tmp;
-    red::polyloc::do_printf(fmt, tmp, loc->impl->loc, args);
+    red::polyloc::do_printf(fmt, tmp, getloc(loc), args);
     auto contents = tmp.str();
     int result = contents.copy(buffer, contents.size());
     return result;
@@ -232,12 +234,12 @@ int poly_snprintf_l(char* buffer, size_t count, const char* format, poly_locale_
     return result;
 }
 
-int poly_vsnprintf_l(char* buffer, size_t count, const char* fmt, poly_locale_s locT, va_list args)
+int poly_vsnprintf_l(char* buffer, size_t count, const char* fmt, poly_locale_s ploc, va_list args)
 {
     array_buf outputBuf (buffer, count);
     std::ostream outs(&outputBuf);
 
-    auto result = red::polyloc::do_printf(fmt, outs, count, locT->impl->loc, args);
+    auto result = red::polyloc::do_printf(fmt, outs, count, getloc(ploc), args);
     return result.chars_needed;
 }
 
@@ -254,22 +256,22 @@ int poly_fprintf_l(FILE* fs, const char* format, poly_locale_s locale, ...)
     return result;
 }
 
-int poly_vfprintf_l(FILE* cfile, const char* fmt, poly_locale_s locale, va_list args)
+int poly_vfprintf_l(FILE* cfile, const char* fmt, poly_locale_s loc, va_list args)
 {
     int result;
 
     // convert FILE* to ostream
 #if defined(_MSC_VER)
     auto outs = std::ofstream(cfile);
-    result = red::polyloc::do_printf(fmt, outs, locale->impl->loc, args);
+    result = red::polyloc::do_printf(fmt, outs, getloc(loc), args);
 #elif defined(__GNUC__)
     __gnu_cxx::stdio_filebuf<char> fbuf{ cfile, std::ios::out };
     std::ostream outs{ &fbuf };
-    result = red::polyloc::do_printf(fmt, outs, locale->impl->loc, args);
+    result = red::polyloc::do_printf(fmt, outs, getloc(loc), args);
 #else
     // Fallback
     std::ostringstream outs;
-    red::polyloc::do_printf(fmt, outs, locale->impl->loc, args);
+    red::polyloc::do_printf(fmt, outs, getloc(loc), args);
     auto contents = outs.str();
     result = std::fputs(contents.c_str(), cfile);
     if (result != EOF) {

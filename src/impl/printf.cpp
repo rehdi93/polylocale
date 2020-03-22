@@ -10,6 +10,9 @@
 #include "bitmask.hpp"
 
 using std::ios;
+using namespace std::literals;
+using namespace bitmask::ops;
+namespace bm = bitmask;
 
 // HELPERS
 namespace
@@ -28,10 +31,10 @@ constexpr char FMT_FROM_VA = '*';
 template <class T, std::size_t N>
 constexpr std::size_t countof(const T(&array)[N]) noexcept { return N; }
 
+
 }
 
-using namespace bitmask::ops;
-namespace bm = bitmask;
+
 
 #ifdef __GNUC__
 using va_list_ref = va_list;
@@ -92,11 +95,14 @@ struct fmtspec_t
 
     bool valid() const
     {
-        return conversion != '\030';
-    }
+        if (conversion == '\030')
+        {
+            return false;
+        }
 
-    bool has_flag(char f) const {
-        return flags.find(f) != std::string::npos;
+        auto end = std::end(FMT_TYPES);
+        auto it = std::find(std::begin(FMT_TYPES), end, conversion);
+        return it != end;
     }
 
     static const int VAL_VA = -(int)'*', VAL_AUTO = -1;
@@ -209,7 +215,9 @@ struct printf_arg
             break;
 
         case 'n': // weird write-bytes specifier (not implemented)
-            //value = va_arg(va, void*);
+        default:
+            // invalid, print fmt as-is minus %
+            outs << fmtspec.fmt.substr(1);
             break;
 
             // https://docs.microsoft.com/en-us/cpp/c-runtime-library/format-specification-syntax-printf-and-wprintf-functions?view=vs-2019#argument-size-specification
@@ -221,10 +229,6 @@ struct printf_arg
             else {
                 put_int(outs, va_arg(va, uint32_t));
             }
-            break;
-        default:
-            // invalid, print fmt as-is minus %
-            outs << fmtspec.fmt.substr(1);
             break;
         }
     }
@@ -447,16 +451,13 @@ int red::polyloc::do_printf(string_view fmt, std::ostream& outs, const std::loca
             outs << txtb4;
 
             // possible fmtspec(s)
-            // %[flags][width][.precision][size]type
-            const auto end = format.find_first_of(FMT_TYPES, i + 1) + 1;
-            auto part = format.substr(i, end - i);
-            spec.assign(part);
+            format.remove_prefix(i);
+            spec.assign(format, 0, 30);
             
             printf_arg arg{ spec, loc, va };
             arg.put(outs);
 
-            i += spec.size();
-            format.remove_prefix(i);
+            format.remove_prefix(arg.fmtspec.fmt.size());
         }
     }
 }
@@ -555,11 +556,8 @@ fmtspec_t parsefmt(const std::string& str, std::locale const& locale)
     }
 
     // conversion spec
-    start = spec.find_first_of(FMT_TYPES, end);
-    if (start != npos)
-        fmtspec.conversion = spec.at(start);
-    else
-        fmtspec.conversion = '\030';
+    fmtspec.conversion = spec.at(end);
+    fmtspec.fmt = spec.substr(0, end+1);
 
     return fmtspec;
 }
