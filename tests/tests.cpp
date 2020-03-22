@@ -155,7 +155,7 @@ TEST_CASE("other sprintf_l tests", "[sprintf_l]")
     REQUIRE(poly_sprintf_l(buffer, "%d  %600s", ploc, 3, "abc") == 603);
 }
 
-TEST_CASE("Size handler bug", "[sprintf_l][bug]")
+TEST_CASE("Size handler bug", "[bug][.]")
 {
     auto localename = "C";
     auto loc = locale_ptr(poly_newlocale(POLY_ALL_MASK, localename, NULL), poly_freelocale);

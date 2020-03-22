@@ -272,10 +272,7 @@ int poly_vfprintf_l(FILE* cfile, const char* fmt, poly_locale_s locale, va_list 
     red::polyloc::do_printf(fmt, outs, locale->impl->loc, args);
     auto contents = outs.str();
     result = std::fputs(contents.c_str(), cfile);
-    if (result == EOF) {
-        return -1;
-    }
-    else {
+    if (result != EOF) {
         result = (int)contents.size();
     }
 #endif

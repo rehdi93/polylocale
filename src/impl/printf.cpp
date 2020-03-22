@@ -551,7 +551,7 @@ fmtspec_t parsefmt(const std::string& str, std::locale const& locale)
     if (start != npos)
     {
         end = spec.find_first_not_of(FMT_SIZES, start);
-        fmtspec.length_mod = red::string_view(str).substr(start, end-start);
+        fmtspec.length_mod = spec.substr(start, end-start);
     }
 
     // conversion spec

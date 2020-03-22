@@ -1,7 +1,7 @@
 # TODO
 [x] get printf working
 [] Add wchar support ('C','S')
-[] find out how to convert a FILE* to a std stream (for fprintf)
+[x] find out how to convert a FILE* to a std stream (for fprintf)
 
 # Reference
 - https://github.com/mltframework/mlt/issues/214#issuecomment-285895964
