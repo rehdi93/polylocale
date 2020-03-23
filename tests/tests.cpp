@@ -1,3 +1,4 @@
+// adapted from stb/tests/test_sprintf.c
 #include <memory>
 #include <string>
 #include <array>
@@ -32,9 +33,8 @@ static_assert(std::is_same_v<locale_t, poly_locale*>, "locale_t is not poly_loca
 #endif // POLYLOC_UNDECORATED
 
 
-using locale_ptr = std::unique_ptr<poly_locale, decltype(poly_freelocale)*>;
-
-// adapted from stb/tests/test_sprintf.c
+using locale_ptr_t = std::unique_ptr<poly_locale, decltype(poly_freelocale)*>;
+locale_ptr_t locale_ptr(poly_locale* ploc) { return locale_ptr_t(ploc, poly_freelocale); }
 
 
 struct sprintf_test_result
@@ -72,7 +72,7 @@ sprintf_test_result do_test_sprintf(std::string expected, char* buf, size_t coun
 TEST_CASE("Formating integers", "[sprintf_l][format]")
 {
     auto localename = "C";
-    auto loc = locale_ptr(poly_newlocale(POLY_ALL_MASK, localename, NULL), poly_freelocale);
+    auto loc = locale_ptr(poly_newlocale(POLY_ALL_MASK, localename, NULL));
     auto ploc = loc.get();
     char_buffer<1024> buffer;
 
@@ -165,7 +165,7 @@ TEST_CASE("other sprintf_l tests", "[sprintf_l]")
 TEST_CASE("Size handler bug", "[bug][.]")
 {
     auto localename = "C";
-    auto loc = locale_ptr(poly_newlocale(POLY_ALL_MASK, localename, NULL), poly_freelocale);
+    auto loc = locale_ptr(poly_newlocale(POLY_ALL_MASK, localename, NULL));
     char_buffer<1024> buffer;
 
     intmax_t j = -1;
@@ -181,11 +181,9 @@ TEST_CASE("Size handler bug", "[bug][.]")
     REQUIRE(expected == result);
 }
 
-
-
 TEST_CASE("snprintf_l tests", "[snprintf_l]") {
     auto localename = "C";
-    auto loc = locale_ptr(poly_newlocale(POLY_ALL_MASK, localename, NULL), poly_freelocale);
+    auto loc = locale_ptr(poly_newlocale(POLY_ALL_MASK, localename, NULL));
     char_buffer<1024> buffer;
     auto ploc = loc.get();
     const double pow_2_75 = 37778931862957161709568.0;
@@ -228,3 +226,52 @@ TEST_CASE("snprintf_l tests", "[snprintf_l]") {
     }
 }
 
+TEST_CASE("PI to string")
+{
+    const auto PI = 3.141592653;
+    char_buffer<25> buffer;
+    auto fmt = "%.4f";
+
+    CAPTURE(fmt);
+
+    SECTION("decimal point") {
+        auto en_us = locale_ptr(poly_newlocale(POLY_ALL_MASK, "en_US", NULL));
+        poly_snprintf_l(buffer, 25, fmt, en_us.get(), PI);
+        string_view result = buffer;
+        INFO("en_US");
+        REQUIRE(result == "3.1416");
+    }
+
+    SECTION("decimal comma") {
+        auto pt_br = locale_ptr(poly_newlocale(POLY_ALL_MASK, "pt_BR", NULL));
+        poly_snprintf_l(buffer, 25, fmt, pt_br.get(), PI);
+        string_view result = buffer;
+        INFO("pt_BR");
+        REQUIRE(result == "3,1416");
+    }
+}
+
+TEST_CASE("string to PI", "[strtod]")
+{
+    auto en_us = locale_ptr(poly_newlocale(POLY_ALL_MASK, "en_US", NULL));
+    auto pt_br = locale_ptr(poly_newlocale(POLY_ALL_MASK, "pt_BR", NULL));
+
+    auto PI_point = "3.1416";
+    auto PI_comma = "3,1416";
+    const double PI =3.1416;
+    double result;
+
+    {
+        result = poly_strtod_l(PI_point, NULL, en_us.get());
+        INFO("en_US");
+        CAPTURE(PI_point);
+        REQUIRE(result == PI);
+    }
+    {
+        result = poly_strtod_l(PI_comma, NULL, pt_br.get());
+        INFO("pt_BR");
+        CAPTURE(PI_comma);
+        REQUIRE(result == PI);
+    }
+
+}
