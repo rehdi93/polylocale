@@ -38,7 +38,7 @@ struct sprintf_test_result
 };
 
 template<typename ...VA>
-sprintf_test_result do_test_sprintf(std::string expected, char* buf, size_t count, std::string fmt, poly_locale_s loc, VA... rest)
+sprintf_test_result do_test_sprintf(std::string expected, char* buf, size_t count, std::string fmt, poly_locale_t loc, VA... rest)
 {
     int ret;
     if (count == size_t(-1))
@@ -96,7 +96,7 @@ TEST_CASE("Formating integers", "[sprintf_l][format]")
 TEST_CASE("Formating floating point", "[sprintf_l][format]")
 {
     auto localename = "C";
-    poly_locale_s ploc = poly_newlocale(POLY_ALL_MASK, localename, NULL);
+    poly_locale_t ploc = poly_newlocale(POLY_ALL_MASK, localename, NULL);
     char_buffer<1024> buffer{};
     const double pow_2_85 = 38685626227668133590597632.0;
 
@@ -134,10 +134,10 @@ TEST_CASE("Formating floating point", "[sprintf_l][format]")
 TEST_CASE("(new|free|dup)locale work", "[poly C]") {
     std::string locname = "C";
 
-    poly_locale_s ploc = poly_newlocale(POLY_ALL_MASK, locname.c_str(), NULL);
+    poly_locale_t ploc = poly_newlocale(POLY_ALL_MASK, locname.c_str(), NULL);
     REQUIRE(ploc->name == locname);
 
-    poly_locale_s ploc_copy = poly_duplocale(ploc);
+    poly_locale_t ploc_copy = poly_duplocale(ploc);
     REQUIRE(ploc_copy->name == locname);
     REQUIRE(ploc != ploc_copy);
 

@@ -38,7 +38,7 @@ static auto make_polylocale(std::locale const& base) {
     return plc;
 }
 
-static auto make_polylocale(poly_locale_s loc) {
+static auto make_polylocale(poly_locale_t loc) {
     auto plc = std::make_unique<poly_locale>();
     plc->impl = new poly_impl(*loc->impl);
     plc->name = plc->impl->name.c_str();
@@ -46,7 +46,7 @@ static auto make_polylocale(poly_locale_s loc) {
     return plc;
 }
 
-static auto getloc(poly_locale_s ploc) -> std::locale
+static auto getloc(poly_locale_t ploc) -> std::locale
 {
     if (ploc == POLY_GLOBAL_LOCALE)
         return {};
@@ -82,7 +82,7 @@ static auto mask_to_cat(int mask) noexcept -> std::locale::category
 extern "C" {
 
 // https://pubs.opengroup.org/onlinepubs/9699919799/functions/newlocale.html
-poly_locale_s poly_newlocale(int category_mask, const char* localename, poly_locale_s base)
+poly_locale_t poly_newlocale(int category_mask, const char* localename, poly_locale_t base)
 {
     try
     {
@@ -124,14 +124,14 @@ poly_locale_s poly_newlocale(int category_mask, const char* localename, poly_loc
 }
 
 // https://pubs.opengroup.org/onlinepubs/9699919799/functions/freelocale.html
-void poly_freelocale(poly_locale_s loc) {
+void poly_freelocale(poly_locale_t loc) {
     if (loc)
         delete loc->impl;
 
     delete loc;
 }
 
-poly_locale_s poly_duplocale(poly_locale_s loc)
+poly_locale_t poly_duplocale(poly_locale_t loc)
 {
     try
     {
@@ -152,7 +152,7 @@ poly_locale_s poly_duplocale(poly_locale_s loc)
 
 // ---
 
-double poly_strtod_l(const char* str, char** endptr, poly_locale_s ploc)
+double poly_strtod_l(const char* str, char** endptr, poly_locale_t ploc)
 {
     std::istringstream ss{str};
     ss.imbue(getloc(ploc));
@@ -178,7 +178,7 @@ using array_read_buf = boost::iostreams::stream_buffer<boost::iostreams::array_s
 using array_buf = boost::iostreams::stream_buffer<boost::iostreams::array>;
 
 
-int poly_printf_l(const char* fmt, poly_locale_s locale, ...)
+int poly_printf_l(const char* fmt, poly_locale_t locale, ...)
 {
     int result;
     va_list va;
@@ -190,7 +190,7 @@ int poly_printf_l(const char* fmt, poly_locale_s locale, ...)
     return result;
 }
 
-int poly_vprintf_l(const char* fmt, poly_locale_s locale, va_list args)
+int poly_vprintf_l(const char* fmt, poly_locale_t locale, va_list args)
 {
     std::ostringstream tmp;
     red::polyloc::do_printf(fmt, tmp, getloc(locale), args);
@@ -201,7 +201,7 @@ int poly_vprintf_l(const char* fmt, poly_locale_s locale, va_list args)
 }
 
 
-int poly_sprintf_l(char* buffer, const char* fmt, poly_locale_s loc, ...)
+int poly_sprintf_l(char* buffer, const char* fmt, poly_locale_t loc, ...)
 {
     int result;
     va_list va;
@@ -213,7 +213,7 @@ int poly_sprintf_l(char* buffer, const char* fmt, poly_locale_s loc, ...)
     return result;
 }
 
-int poly_vsprintf_l(char* buffer, const char* fmt, poly_locale_s loc, va_list args)
+int poly_vsprintf_l(char* buffer, const char* fmt, poly_locale_t loc, va_list args)
 {
     std::ostringstream tmp;
     red::polyloc::do_printf(fmt, tmp, getloc(loc), args);
@@ -222,7 +222,7 @@ int poly_vsprintf_l(char* buffer, const char* fmt, poly_locale_s loc, va_list ar
     return result;
 }
 
-int poly_snprintf_l(char* buffer, size_t count, const char* format, poly_locale_s locale, ...)
+int poly_snprintf_l(char* buffer, size_t count, const char* format, poly_locale_t locale, ...)
 {
     int result;
     va_list va;
@@ -234,7 +234,7 @@ int poly_snprintf_l(char* buffer, size_t count, const char* format, poly_locale_
     return result;
 }
 
-int poly_vsnprintf_l(char* buffer, size_t count, const char* fmt, poly_locale_s ploc, va_list args)
+int poly_vsnprintf_l(char* buffer, size_t count, const char* fmt, poly_locale_t ploc, va_list args)
 {
     array_buf outputBuf (buffer, count);
     std::ostream outs(&outputBuf);
@@ -244,7 +244,7 @@ int poly_vsnprintf_l(char* buffer, size_t count, const char* fmt, poly_locale_s 
 }
 
 
-int poly_fprintf_l(FILE* fs, const char* format, poly_locale_s locale, ...)
+int poly_fprintf_l(FILE* fs, const char* format, poly_locale_t locale, ...)
 {
     int result;
     va_list va;
@@ -256,7 +256,7 @@ int poly_fprintf_l(FILE* fs, const char* format, poly_locale_s locale, ...)
     return result;
 }
 
-int poly_vfprintf_l(FILE* cfile, const char* fmt, poly_locale_s loc, va_list args)
+int poly_vfprintf_l(FILE* cfile, const char* fmt, poly_locale_t loc, va_list args)
 {
     int result;
 

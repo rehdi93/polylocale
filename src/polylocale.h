@@ -23,25 +23,25 @@ struct poly_locale
     struct poly_impl* impl;
     const char* name;
 };
-typedef struct poly_locale* poly_locale_s;
+typedef struct poly_locale* poly_locale_t;
 
-poly_locale_s poly_newlocale(int category_mask, const char* localename, poly_locale_s base);
-void poly_freelocale(poly_locale_s loc);
-poly_locale_s poly_duplocale(poly_locale_s loc);
+poly_locale_t poly_newlocale(int category_mask, const char* localename, poly_locale_t base);
+void poly_freelocale(poly_locale_t loc);
+poly_locale_t poly_duplocale(poly_locale_t loc);
 
-double poly_strtod_l(const char* str, char** endptr, poly_locale_s loc);
+double poly_strtod_l(const char* str, char** endptr, poly_locale_t loc);
 
-int poly_printf_l(const char* fmt, poly_locale_s locale, ...);
-int poly_vprintf_l(const char* fmt, poly_locale_s locale, va_list args);
-int poly_sprintf_l(char* buffer, const char* fmt, poly_locale_s loc, ...);
-int poly_vsprintf_l(char* buffer, const char* fmt, poly_locale_s locale, va_list args);
-int poly_snprintf_l(char* buffer, size_t count, const char* fmt, poly_locale_s loc, ...);
-int poly_vsnprintf_l(char* buffer, size_t count, const char* fmt, poly_locale_s loc, va_list args);
-int poly_fprintf_l(FILE* cfile, const char* fmt, poly_locale_s locale, ...);
-int poly_vfprintf_l(FILE* cfile, const char* fmt, poly_locale_s locale, va_list args);
+int poly_printf_l(const char* fmt, poly_locale_t locale, ...);
+int poly_vprintf_l(const char* fmt, poly_locale_t locale, va_list args);
+int poly_sprintf_l(char* buffer, const char* fmt, poly_locale_t loc, ...);
+int poly_vsprintf_l(char* buffer, const char* fmt, poly_locale_t locale, va_list args);
+int poly_snprintf_l(char* buffer, size_t count, const char* fmt, poly_locale_t loc, ...);
+int poly_vsnprintf_l(char* buffer, size_t count, const char* fmt, poly_locale_t loc, va_list args);
+int poly_fprintf_l(FILE* cfile, const char* fmt, poly_locale_t locale, ...);
+int poly_vfprintf_l(FILE* cfile, const char* fmt, poly_locale_t locale, va_list args);
 
 
-#define POLY_GLOBAL_LOCALE    ((poly_locale_s) -1L)
+#define POLY_GLOBAL_LOCALE    ((poly_locale_t) -1L)
 
 enum poly_lc_masks
 {
@@ -60,7 +60,7 @@ enum poly_lc_masks
 
 #ifdef POLYLOC_UNDECORATED
 
-#define locale_t        poly_locale_s
+#define locale_t        poly_locale_t
 #define newlocale       poly_newlocale
 #define freelocale      poly_freelocale
 #define duplocale       poly_duplocale
