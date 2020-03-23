@@ -38,7 +38,7 @@ static auto make_polylocale(std::locale const& base) {
     return plc;
 }
 
-static auto make_polylocale(poly_locale_t loc) {
+static auto copy_polylocale(poly_locale_t loc) {
     auto plc = std::make_unique<poly_locale>();
     plc->impl = new poly_impl(*loc->impl);
     plc->name = plc->impl->name.c_str();
@@ -140,7 +140,7 @@ poly_locale_t poly_duplocale(poly_locale_t loc)
             return plc.release();
         }
         
-        auto plc = make_polylocale(loc);
+        auto plc = copy_polylocale(loc);
         return plc.release();
     }
     catch(const std::bad_alloc&)
@@ -219,6 +219,7 @@ int poly_vsprintf_l(char* buffer, const char* fmt, poly_locale_t loc, va_list ar
     red::polyloc::do_printf(fmt, tmp, getloc(loc), args);
     auto contents = tmp.str();
     int result = contents.copy(buffer, contents.size());
+    buffer[contents.size()] = '\0';
     return result;
 }
 
@@ -240,6 +241,8 @@ int poly_vsnprintf_l(char* buffer, size_t count, const char* fmt, poly_locale_t 
     std::ostream outs(&outputBuf);
 
     auto result = red::polyloc::do_printf(fmt, outs, count, getloc(ploc), args);
+    outs.put('\0');
+
     return result.chars_needed;
 }
 

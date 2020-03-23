@@ -13,6 +13,12 @@ using boost::string_view;
 template<size_t Count>
 struct char_buffer : std::array<char, Count>
 {
+    char_buffer()
+    {
+        // sprintf must write the terminating null
+        fill('\3');
+    }
+
     operator char* () {
         return &this->front();
     }
@@ -68,7 +74,7 @@ TEST_CASE("Formating integers", "[sprintf_l][format]")
     auto localename = "C";
     auto loc = locale_ptr(poly_newlocale(POLY_ALL_MASK, localename, NULL), poly_freelocale);
     auto ploc = loc.get();
-    char_buffer<1024> buffer{};
+    char_buffer<1024> buffer;
 
     INFO("Locale: " << localename);
 
@@ -97,7 +103,7 @@ TEST_CASE("Formating floating point", "[sprintf_l][format]")
 {
     auto localename = "C";
     poly_locale_t ploc = poly_newlocale(POLY_ALL_MASK, localename, NULL);
-    char_buffer<1024> buffer{};
+    char_buffer<1024> buffer;
     const double pow_2_85 = 38685626227668133590597632.0;
 
     INFO("Locale: " << localename);
@@ -147,7 +153,7 @@ TEST_CASE("(new|free|dup)locale work", "[poly C]") {
 
 TEST_CASE("other sprintf_l tests", "[sprintf_l]")
 {
-    char_buffer<1024> buffer{};
+    char_buffer<1024> buffer;
     std::string locname = "C";
 
     auto ploc = poly_newlocale(POLY_ALL_MASK, locname.c_str(), NULL);
@@ -160,7 +166,7 @@ TEST_CASE("Size handler bug", "[bug][.]")
 {
     auto localename = "C";
     auto loc = locale_ptr(poly_newlocale(POLY_ALL_MASK, localename, NULL), poly_freelocale);
-    char_buffer<1024> buffer{};
+    char_buffer<1024> buffer;
 
     intmax_t j = -1;
     int z = 2;
@@ -180,9 +186,8 @@ TEST_CASE("Size handler bug", "[bug][.]")
 TEST_CASE("snprintf_l tests", "[snprintf_l]") {
     auto localename = "C";
     auto loc = locale_ptr(poly_newlocale(POLY_ALL_MASK, localename, NULL), poly_freelocale);
-    char_buffer<1024> buffer{};
+    char_buffer<1024> buffer;
     auto ploc = loc.get();
-
     const double pow_2_75 = 37778931862957161709568.0;
 
     INFO("Locale: " << localename);
@@ -208,11 +213,9 @@ TEST_CASE("snprintf_l tests", "[snprintf_l]") {
         REQUIRE(tr.result == tr.expected);
     }
 
-    SECTION("Don't write if count==0") {
-        auto tr = do_test_sprintf("", buffer, 0, "7 chars", ploc);
-        CAPTURE(tr.expected, tr.result, tr.format, tr.returnValue);
-        CHECK(tr.returnValue == 7);
-        REQUIRE(tr.result == tr.expected);
+    SECTION("Don't write if count==0, return necessary size") {
+        int ret = poly_snprintf_l(buffer, 0, "7 chars", ploc);
+        REQUIRE(ret == 7);
     }
 
     SECTION("Large paddings") {
@@ -221,7 +224,6 @@ TEST_CASE("snprintf_l tests", "[snprintf_l]") {
 
         CHECK(result.size() == 549);
         REQUIRE(poly_snprintf_l(buffer, 600, "%510s     %c", ploc, "a", 'b') == 516);
-
         REQUIRE(poly_snprintf_l(NULL, 0, " %s     %d", ploc, "b", 123) == 10);
     }
 }

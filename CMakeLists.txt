@@ -2,7 +2,7 @@
 #
 cmake_minimum_required (VERSION 3.8)
 
-project ("polylocale" VERSION 0.0.5)
+project ("polylocale" VERSION 0.0.6)
 
 if(MSVC)
 	add_compile_options(-Zc:__cplusplus)

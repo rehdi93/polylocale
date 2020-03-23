@@ -125,7 +125,7 @@ struct fmtspec_t
         return it != end;
     }
 
-    static const int VAL_VA = -(int)'*', VAL_AUTO = -1;
+    static const int VAL_VA = -(int)FMT_FROM_VA, VAL_AUTO = -1;
 };
 
 static fmtspec_t parsefmt(const std::string& str, std::locale const& locale);
@@ -491,14 +491,14 @@ auto red::polyloc::do_printf(string_view format, std::ostream& outs, size_t max,
     auto tmpstr = tmp.str();
     ret.chars_needed = tmpstr.size();
 
-    if (ret.chars_needed <= max)
+    if (max == 0)
+    {
+        ret.chars_written = 0;
+    }
+    else if (ret.chars_needed < max)
     {
         ret.chars_written = tmpstr.size();
         outs << tmpstr;
-    }
-    else if (max == 0)
-    {
-        ret.chars_written = 0;
     }
     else
     {
