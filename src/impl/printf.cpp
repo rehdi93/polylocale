@@ -31,6 +31,26 @@ constexpr char FMT_FROM_VA = '*';
 template <class T, std::size_t N>
 constexpr std::size_t countof(const T(&array)[N]) noexcept { return N; }
 
+template <class StrView>
+long svtol(StrView sv, size_t* pos = 0, int base = 10)
+{
+    typename StrView::pointer pend;
+    auto pbeg = sv.data();
+    long val = strtol(pbeg, &pend, base);
+
+    if (pbeg == pend) {
+        throw std::invalid_argument("invalid svtol argument");
+    }
+    if (errno == ERANGE) {
+        throw std::out_of_range("svtol argument out of range");
+    }
+
+    if (pos) {
+        *pos = pend - pbeg;
+    }
+
+    return val;
+}
 
 }
 
@@ -495,8 +515,8 @@ fmtspec_t parsefmt(const std::string& str, std::locale const& locale)
 {
     auto constexpr npos = std::string::npos;
 
-    fmtspec_t fmtspec{ str };
-    red::string_view spec = fmtspec.fmt;
+    fmtspec_t fmtspec;
+    red::string_view spec = str;
     assert(spec[0] == FMT_START);
 
     size_t start=1, end=0;
@@ -516,16 +536,14 @@ fmtspec_t parsefmt(const std::string& str, std::locale const& locale)
         fmtspec.field_width = fmtspec.VAL_VA;
         end++;
     }
-    else if (std::isdigit(spec[end], locale))
+    else if (std::isdigit(spec[end], locale)) try
     {
-        try {
-            size_t converted;
-            fmtspec.field_width = std::stoi(str.substr(end), &converted);
-            end += converted;
-        }
-        catch (const std::exception&) {
-            // no conversion took place
-        }
+        size_t converted;
+        fmtspec.field_width = svtol(spec.substr(end), &converted);
+        end += converted;
+    }
+    catch (const std::exception&) {
+        // no conversion took place
     }
 
     if (spec[end] == FMT_PRECISION)
@@ -539,7 +557,7 @@ fmtspec_t parsefmt(const std::string& str, std::locale const& locale)
         else if (std::isdigit(spec[end], locale)) try
         {
             size_t converted;
-            fmtspec.precision = std::stoi(str.substr(end), &converted);
+            fmtspec.precision = svtol(spec.substr(end), &converted);
             end += converted;
         }
         catch (const std::exception&) {
