@@ -78,6 +78,8 @@ TEST_CASE("Formating integers", "[sprintf_l][format]")
 
     INFO("Locale: " << localename);
 
+    TEST_FMT("120", "%d%u", 12, 0);
+    TEST_FMT("", "%", 12);
     TEST_FMT("0177 0", "%# +o %#o", 127, 0);
     TEST_FMT("bad fmt:  -.3M", "bad fmt: % -.3M", 321.1);
     TEST_FMT("a b     1", "%c %s     %d", 'a', "b", 1);
@@ -97,6 +99,7 @@ TEST_CASE("Formating integers", "[sprintf_l][format]")
     TEST_FMT("33 555", "%hi %ld", (short)33, 555l);
     TEST_FMT("9888777666", "%llu", 9888777666llu);
     TEST_FMT("what? 22", "what? %zi", 22);
+    TEST_FMT("100% win rate!", "%d%% win rate!", 100);
 }
 
 TEST_CASE("Formating floating point", "[sprintf_l][format]")
@@ -134,10 +137,9 @@ TEST_CASE("Formating floating point", "[sprintf_l][format]")
     TEST_FMT("1", "%.0g", 1.2);
     TEST_FMT(" 3.7 3.71", "% .3g %.3g", 3.704, 3.706);
     TEST_FMT("2e-315:1e+308", "%g:%g", 2e-315, 1e+308);
-
 }
 
-TEST_CASE("(new|free|dup)locale work", "[poly C]") {
+TEST_CASE("(new|free|dup)locale", "[poly C]") {
     std::string locname = "C";
 
     poly_locale_t ploc = poly_newlocale(POLY_ALL_MASK, locname.c_str(), NULL);
@@ -155,11 +157,10 @@ TEST_CASE("other sprintf_l tests", "[sprintf_l]")
 {
     char_buffer<1024> buffer;
     std::string locname = "C";
-
     auto ploc = poly_newlocale(POLY_ALL_MASK, locname.c_str(), NULL);
-    std::locale::global(std::locale{ locname });
 
     REQUIRE(poly_sprintf_l(buffer, "%d  %600s", ploc, 3, "abc") == 603);
+
 }
 
 TEST_CASE("Size handler bug", "[bug][.]")

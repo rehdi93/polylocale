@@ -19,7 +19,7 @@ namespace
 {
 
 constexpr char FMT_START    = '%';
-constexpr char FMT_ALL[]    = "%.*" "-+ #0" "hljztI" "CcudioXxEeFfGgAapSsn";
+constexpr char FMT_ALL[]    = "%.*" "-+ #0" "hljztI" "CcudioXxEeFfGgAapSsn" /*"123456789"*/ ;
 constexpr char FMT_FLAGS[]  = "-+ #0";
 constexpr char FMT_TYPES[]  = "CcudioXxEeFfGgAapSsn";
 constexpr char FMT_SIZES[]  = "hljztI";
@@ -30,6 +30,25 @@ constexpr char FMT_FROM_VA = '*';
 
 template <class T, std::size_t N>
 constexpr std::size_t countof(const T(&array)[N]) noexcept { return N; }
+
+bool isfmt(unsigned char ch)
+{
+    using namespace std;
+
+    auto e = end(FMT_ALL);
+    return find(begin(FMT_ALL), e, ch) != e || isdigit(ch, locale::classic());
+}
+bool isfmttype(unsigned char ch)
+{
+    using namespace std;
+
+    auto e = end(FMT_TYPES);
+    return find(begin(FMT_TYPES), e, ch) != e;
+}
+bool isfmtend(unsigned char ch)
+{
+    return std::isspace(ch, std::locale::classic()) || ch == FMT_START || !isfmt(ch);
+}
 
 template <class StrView>
 long svtol(StrView sv, size_t* pos = 0, int base = 10)
@@ -52,7 +71,32 @@ long svtol(StrView sv, size_t* pos = 0, int base = 10)
     return val;
 }
 
+/*
+    Tokenizes a single format spec. from 'line'.
+
+    A printf format specifier start with a '%' and ends with a conversion spec.
+    The first char past the end will be either:
+        - whitespace, a single space (' ') maybe a flag. (╯°□°）╯︵ ┻━┻ 
+        - another '%'.
+        - a char not in FMT_ALL.
+*/
+red::string_view fmt_tok(red::string_view line)
+{
+    // "%# +o| %#o"  "bad fmt: % -.3M|" "%10.5d|:%10.5d"
+    using namespace std;
+    using uchar = unsigned char;
+
+    auto fmtIt = adjacent_find(begin(line) + 1, end(line), [](uchar l, uchar r) {
+        bool type_then_end = isfmttype(l) && isfmtend(r);
+        bool two_end_chars = isfmtend(l) && isfmtend(r);
+        return type_then_end || two_end_chars;
+    });
+    
+    auto count = fmtIt - begin(line) + 1;
+    return line.substr(0, count);
 }
+
+} // unnamed
 
 
 
@@ -130,12 +174,11 @@ struct fmtspec_t
 
 static fmtspec_t parsefmt(const std::string& str, std::locale const& locale);
 
-// holds the context required to parse the fmtspec and print it to an ostream
 struct printf_arg
 {
     
-    printf_arg(const std::string& stor, std::locale const& locale, va_list_ref args)
-    : fmtspec(parsefmt(stor, locale)), va(args)
+    printf_arg(fmtspec_t fmts, va_list_ref args)
+    : fmtspec(fmts), va(args)
     {
     }
 
@@ -363,10 +406,9 @@ private:
     }
 
     void put_str(std::ostream& os, red::wstring_view str) const {
-        std::string tmp;
+        std::string tmp( str.size(), '\0' );
 
         auto& f = std::use_facet<std::ctype<wchar_t>>(os.getloc());
-        tmp.append(str.size(), '\0');
         f.narrow(str.data(), str.data()+str.size(), '?', &tmp[0]);
 
         put_str(os, tmp);
@@ -393,7 +435,7 @@ private:
         }
 
         bool skip = false;
-        if (fmtspec.precision <= 0 && val == 0)
+        if (fmtspec.precision >= 0 && val == 0)
         {
             if (bitmask::has_all(os.flags(), ios::oct | ios::showbase))
             {
@@ -415,7 +457,7 @@ private:
 
         if (fmtspec.precision > 0)
         {
-            auto remainingW = std::max(fmtspec.field_width - fmtspec.precision, 0);
+            auto remainingW = fmtspec.field_width - fmtspec.precision;
             if (remainingW > 0)
             {
                 char s = ' ';
@@ -457,12 +499,17 @@ int red::polyloc::do_printf(string_view fmt, std::ostream& outs, const std::loca
             outs << format;
             return outs.tellp();
         }
+        else if (i+1 == format.size())
+        {
+            // format ends with a single '%'
+            return outs.tellp();
+        }
 
         auto txtb4 = format.substr(0, i);
 
-        if (!format[i + 1] || format[i + 1] == FMT_START)
+        if (format[i + 1] == FMT_START)
         {
-            // escaped % or null
+            // escaped %
             outs << txtb4 << format[i + 1];
             format.remove_prefix(txtb4.size()+2);
         }
@@ -473,8 +520,9 @@ int red::polyloc::do_printf(string_view fmt, std::ostream& outs, const std::loca
             // possible fmtspec(s)
             format.remove_prefix(i);
             spec.assign(format, 0, 30);
-            
-            printf_arg arg{ spec, loc, va };
+
+            auto fmtspec = parsefmt(spec, loc);
+            printf_arg arg{ fmtspec, va };
             arg.put(outs);
 
             format.remove_prefix(arg.fmtspec.fmt.size());
@@ -497,7 +545,7 @@ auto red::polyloc::do_printf(string_view format, std::ostream& outs, size_t max,
     }
     else if (ret.chars_needed < max)
     {
-        ret.chars_written = tmpstr.size();
+        ret.chars_written = ret.chars_needed;
         outs << tmpstr;
     }
     else
@@ -516,16 +564,17 @@ fmtspec_t parsefmt(const std::string& str, std::locale const& locale)
     auto constexpr npos = std::string::npos;
 
     fmtspec_t fmtspec;
-    red::string_view spec = str;
+    fmtspec.fmt = fmt_tok(str);
+    red::string_view spec = fmtspec.fmt;
     assert(spec[0] == FMT_START);
 
-    size_t start=1, end=0;
+    size_t start=1, end=0, count;
 
     // Flags
     end = spec.find_first_not_of(FMT_FLAGS, start);
-    if (end != npos)
+    if (end != npos && (count = end - start) > 0)
     {
-        fmtspec.flags = spec.substr(start, end - start);
+        fmtspec.flags = spec.substr(start, count);
     }
     else end = start;
 
@@ -566,16 +615,19 @@ fmtspec_t parsefmt(const std::string& str, std::locale const& locale)
     }
 
     // size overrides
-    start = spec.find_first_of(FMT_SIZES, end);
-    if (start != npos)
+    end = spec.find_first_not_of(FMT_SIZES, start);
+    if (end != npos && (count = end - start) > 0)
     {
-        end = spec.find_first_not_of(FMT_SIZES, start);
-        fmtspec.length_mod = spec.substr(start, end-start);
+        fmtspec.length_mod = spec.substr(start, count);
     }
+    else end = start;
 
     // conversion spec
-    fmtspec.conversion = spec.at(end);
-    fmtspec.fmt = spec.substr(0, end+1);
+    end = spec.find_first_of(FMT_TYPES, start);
+    if (end != npos)
+        fmtspec.conversion = spec.at(end);
+    else
+        fmtspec.conversion = spec.back();
 
     return fmtspec;
 }
