@@ -1,4 +1,5 @@
 // polyimpl.h
+#pragma once
 
 #if __cplusplus >= 201703L
 #	include <string_view>
@@ -6,7 +7,9 @@
 #	include "boost/utility/string_view.hpp"
 #endif
 
-
+#include <iosfwd>
+#include "boost/iostreams/stream_buffer.hpp"
+#include "boost/iostreams/device/array.hpp"
 
 namespace red
 {
@@ -20,5 +23,14 @@ namespace red
 	using boost::wstring_view;
 	using boost::basic_string_view;
 #endif
+
+namespace io
+{
+	using namespace boost::iostreams;
+
+	using array_read_buf = stream_buffer< array_source >;
+	using array_buf = stream_buffer<array>;
+}
+
 
 }

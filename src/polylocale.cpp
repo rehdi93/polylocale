@@ -174,9 +174,7 @@ double poly_strtod_l(const char* str, char** endptr, poly_locale_t ploc)
     return num;
 }
 
-using array_read_buf = boost::iostreams::stream_buffer<boost::iostreams::array_source>;
-using array_buf = boost::iostreams::stream_buffer<boost::iostreams::array>;
-
+using red::io::array_buf;
 
 int poly_printf_l(const char* fmt, poly_locale_t locale, ...)
 {

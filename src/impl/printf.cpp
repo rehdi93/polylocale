@@ -31,12 +31,17 @@ constexpr char FMT_FROM_VA = '*';
 template <class T, std::size_t N>
 constexpr std::size_t countof(const T(&array)[N]) noexcept { return N; }
 
-bool isfmt(unsigned char ch)
+bool isfmtc(unsigned char ch)
 {
     using namespace std;
 
     auto e = end(FMT_ALL);
-    return find(begin(FMT_ALL), e, ch) != e || isdigit(ch, locale::classic());
+    return find(begin(FMT_ALL), e, ch) != e;
+}
+bool isfmt(unsigned char ch)
+{
+    using namespace std;
+    return isfmtc(ch) || isdigit(ch, locale::classic());
 }
 bool isfmttype(unsigned char ch)
 {
@@ -44,10 +49,6 @@ bool isfmttype(unsigned char ch)
 
     auto e = end(FMT_TYPES);
     return find(begin(FMT_TYPES), e, ch) != e;
-}
-bool isfmtend(unsigned char ch)
-{
-    return std::isspace(ch, std::locale::classic()) || ch == FMT_START || !isfmt(ch);
 }
 
 template <class StrView>
@@ -75,10 +76,6 @@ long svtol(StrView sv, size_t* pos = 0, int base = 10)
     Tokenizes a single format spec. from 'line'.
 
     A printf format specifier start with a '%' and ends with a conversion spec.
-    The first char past the end will be either:
-        - whitespace, a single space (' ') maybe a flag. (╯°□°）╯︵ ┻━┻ 
-        - another '%'.
-        - a char not in FMT_ALL.
 */
 red::string_view fmt_tok(red::string_view line)
 {
@@ -86,14 +83,21 @@ red::string_view fmt_tok(red::string_view line)
     using namespace std;
     using uchar = unsigned char;
 
-    auto fmtIt = adjacent_find(begin(line) + 1, end(line), [](uchar l, uchar r) {
-        bool type_then_end = isfmttype(l) && isfmtend(r);
-        bool two_end_chars = isfmtend(l) && isfmtend(r);
-        return type_then_end || two_end_chars;
+    int offs = 1;
+    auto fmtIt = adjacent_find(begin(line)+1, end(line), [&](uchar l, uchar r) mutable {
+        if (isfmt(l) && isfmttype(r)) {
+            offs++;
+            return true;
+        }
+        if (isfmttype(l)) {
+            return true;
+        }
+        return false;
     });
     
-    auto count = fmtIt - begin(line) + 1;
-    return line.substr(0, count);
+    auto count = fmtIt - begin(line) + offs;
+    auto tok = line.substr(0, count);
+    return tok;
 }
 
 } // unnamed
@@ -565,8 +569,8 @@ fmtspec_t parsefmt(const std::string& str, std::locale const& locale)
 
     fmtspec_t fmtspec;
     fmtspec.fmt = fmt_tok(str);
-    red::string_view spec = fmtspec.fmt;
-    assert(spec[0] == FMT_START);
+    auto spec = fmtspec.fmt;
+    assert(spec[0] == FMT_START && spec.size() >= 2);
 
     size_t start=1, end=0, count;
 
