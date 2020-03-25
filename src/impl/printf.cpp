@@ -50,6 +50,12 @@ bool isfmttype(unsigned char ch)
     auto e = end(FMT_TYPES);
     return find(begin(FMT_TYPES), e, ch) != e;
 }
+bool isfmtflag(unsigned char ch)
+{
+    using namespace std;
+    auto e = end(FMT_FLAGS);
+    return find(begin(FMT_FLAGS), e, ch) != e;
+}
 
 template <class StrView>
 long svtol(StrView sv, size_t* pos = 0, int base = 10)
@@ -79,7 +85,7 @@ long svtol(StrView sv, size_t* pos = 0, int base = 10)
 */
 red::string_view fmt_tok(red::string_view line)
 {
-    // "%# +o| %#o"  "bad fmt: % -.3M|" "%10.5d|:%10.5d"
+    // "%# +o| %#o" "%10.5d|:%10.5d"
     using namespace std;
     using uchar = unsigned char;
 
@@ -572,46 +578,44 @@ fmtspec_t parsefmt(const std::string& str, std::locale const& locale)
     auto spec = fmtspec.fmt;
     assert(spec[0] == FMT_START && spec.size() >= 2);
 
-    size_t start=1, end=0, count;
+    size_t start=1, i=1;
 
     // Flags
-    end = spec.find_first_not_of(FMT_FLAGS, start);
-    if (end != npos && (count = end - start) > 0)
+    i = spec.find_first_not_of(FMT_FLAGS, start);
+    if (i != npos)
     {
-        fmtspec.flags = spec.substr(start, count);
+        fmtspec.flags = spec.substr(1, i - start);
     }
-    else end = start;
-
-
+    
     // field width
-    if (spec[end] == FMT_FROM_VA)
+    if (spec[i] == FMT_FROM_VA)
     {
         fmtspec.field_width = fmtspec.VAL_VA;
-        end++;
+        i++;
     }
-    else if (std::isdigit(spec[end], locale)) try
+    else if (std::isdigit(spec[i], locale)) try
     {
         size_t converted;
-        fmtspec.field_width = svtol(spec.substr(end), &converted);
-        end += converted;
+        fmtspec.field_width = svtol(spec.substr(i), &converted);
+        i += converted;
     }
     catch (const std::exception&) {
         // no conversion took place
     }
 
-    if (spec[end] == FMT_PRECISION)
+    if (spec[i] == FMT_PRECISION)
     {
-        end++;
-        if (spec[end] == FMT_FROM_VA)
+        i++;
+        if (spec[i] == FMT_FROM_VA)
         {
             fmtspec.precision = fmtspec.VAL_VA;
-            end++;
+            i++;
         }
-        else if (std::isdigit(spec[end], locale)) try
+        else if (std::isdigit(spec[i], locale)) try
         {
             size_t converted;
-            fmtspec.precision = svtol(spec.substr(end), &converted);
-            end += converted;
+            fmtspec.precision = svtol(spec.substr(i), &converted);
+            i += converted;
         }
         catch (const std::exception&) {
             // no conversion took place
@@ -619,19 +623,19 @@ fmtspec_t parsefmt(const std::string& str, std::locale const& locale)
     }
 
     // size overrides
-    end = spec.find_first_not_of(FMT_SIZES, start);
-    if (end != npos && (count = end - start) > 0)
+    start = i;
+    i = spec.find_first_of(FMT_SIZES, start);
+    if (i != npos)
     {
-        fmtspec.length_mod = spec.substr(start, count);
+        start = i;
+        i = spec.find_first_not_of(FMT_SIZES, start);
+        fmtspec.length_mod = spec.substr(start, i - start);
     }
-    else end = start;
 
     // conversion spec
-    end = spec.find_first_of(FMT_TYPES, start);
-    if (end != npos)
-        fmtspec.conversion = spec.at(end);
-    else
-        fmtspec.conversion = spec.back();
+    i = spec.find_first_of(FMT_TYPES, start);
+    if (i != npos)
+        fmtspec.conversion = spec.at(i);
 
     return fmtspec;
 }

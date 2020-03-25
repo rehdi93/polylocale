@@ -47,6 +47,7 @@ template<typename ...VA>
 sprintf_test_result do_test_sprintf(std::string expected, char* buf, size_t count, std::string fmt, poly_locale_t loc, VA... rest)
 {
     int ret;
+    auto dbgfmt = fmt.c_str();
     if (count == size_t(-1))
     {
         ret = poly_sprintf_l(buf, fmt.c_str(), loc, rest...);
@@ -69,7 +70,7 @@ sprintf_test_result do_test_sprintf(std::string expected, char* buf, size_t coun
 #define TEST_FMT(expected_, fmt, ...) FMT_TEST_BASE(expected_, fmt, buffer, size_t(-1), ploc, __VA_ARGS__)
 
 
-TEST_CASE("Formating integers", "[sprintf_l][format]")
+TEST_CASE("Formating integers", "[sprintf_l]")
 {
     auto localename = "C";
     auto loc = locale_ptr(poly_newlocale(POLY_ALL_MASK, localename, NULL));
@@ -79,7 +80,6 @@ TEST_CASE("Formating integers", "[sprintf_l][format]")
     INFO("Locale: " << localename);
 
     TEST_FMT("1210", "%d1%u", 12, 0);
-    TEST_FMT("", "%", 12);
     TEST_FMT("0177 0", "%# +o %#o", 127, 0);
     TEST_FMT("bad fmt:  -.3M", "bad fmt: % -.3M", 321.1);
     TEST_FMT("a b     1", "%c %s     %d", 'a', "b", 1);
@@ -100,9 +100,10 @@ TEST_CASE("Formating integers", "[sprintf_l][format]")
     TEST_FMT("9888777666", "%llu", 9888777666llu);
     TEST_FMT("what? 22", "what? %zi", 22);
     TEST_FMT("100% win rate!", "%d%% win rate!", 100);
+    TEST_FMT("+1024 -768", "%+lli % ld", 1024ll, -768l);
 }
 
-TEST_CASE("Formating floating point", "[sprintf_l][format]")
+TEST_CASE("Formating floating point", "[sprintf_l]")
 {
     auto localename = "C";
     poly_locale_t ploc = poly_newlocale(POLY_ALL_MASK, localename, NULL);
@@ -140,27 +141,43 @@ TEST_CASE("Formating floating point", "[sprintf_l][format]")
 }
 
 TEST_CASE("(new|free|dup)locale", "[poly C]") {
-    std::string locname = "C";
+    string_view locname = "C";
 
-    poly_locale_t ploc = poly_newlocale(POLY_ALL_MASK, locname.c_str(), NULL);
+    auto ploc = poly_newlocale(POLY_ALL_MASK, locname.data(), NULL);
     REQUIRE(ploc->name == locname);
 
-    poly_locale_t ploc_copy = poly_duplocale(ploc);
+    auto ploc_copy = poly_duplocale(ploc);
     REQUIRE(ploc_copy->name == locname);
     REQUIRE(ploc != ploc_copy);
 
-    poly_freelocale(ploc);
     poly_freelocale(ploc_copy);
+
+    locname = "pt_BR";
+    auto ploc_base = poly_newlocale(POLY_NUMERIC_MASK | POLY_COLLATE_MASK, locname.data(), ploc);
+    CHECK(ploc_base->name == locname);
+    REQUIRE(ploc_base == ploc);
+
+    poly_freelocale(ploc);
 }
 
-TEST_CASE("other sprintf_l tests", "[sprintf_l]")
+TEST_CASE("sprintf_l tests", "[sprintf_l]")
 {
     char_buffer<1024> buffer;
     std::string locname = "C";
     auto ploc = poly_newlocale(POLY_ALL_MASK, locname.c_str(), NULL);
 
-    REQUIRE(poly_sprintf_l(buffer, "%d  %600s", ploc, 3, "abc") == 603);
+    SECTION("600 width") {
+        REQUIRE(poly_sprintf_l(buffer, "%d  %600s", ploc, 3, "abc") == 603);
+    }
 
+    SECTION("% as last char") {
+        int retval = poly_sprintf_l(buffer, "%", ploc, 42);
+        string_view result = buffer;
+        CAPTURE(retval, result);
+        REQUIRE(result == "");
+    }
+
+    TEST_FMT("42.1540000", "%#0-10.3f", 42.1539);
 }
 
 TEST_CASE("Size handler bug", "[bug][.]")
