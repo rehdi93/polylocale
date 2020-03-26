@@ -16,21 +16,19 @@
 extern "C" {
 #endif
 
-struct poly_impl;
+struct poly_locale;
 
-struct poly_locale
-{
-    struct poly_impl* impl;
-    const char* name;
-};
 typedef struct poly_locale* poly_locale_t;
 
+// locale_t management
 poly_locale_t poly_newlocale(int category_mask, const char* localename, poly_locale_t base);
 void poly_freelocale(poly_locale_t loc);
 poly_locale_t poly_duplocale(poly_locale_t loc);
 
+// deserialization
 double poly_strtod_l(const char* str, char** endptr, poly_locale_t loc);
 
+// printf family
 int poly_printf_l(const char* fmt, poly_locale_t locale, ...);
 int poly_vprintf_l(const char* fmt, poly_locale_t locale, va_list args);
 int poly_sprintf_l(char* buffer, const char* fmt, poly_locale_t loc, ...);
@@ -40,8 +38,9 @@ int poly_vsnprintf_l(char* buffer, size_t count, const char* fmt, poly_locale_t 
 int poly_fprintf_l(FILE* cfile, const char* fmt, poly_locale_t locale, ...);
 int poly_vfprintf_l(FILE* cfile, const char* fmt, poly_locale_t locale, va_list args);
 
+// polyloc specific
+const char* polyloc_getname(poly_locale_t l);
 
-#define POLY_GLOBAL_LOCALE    ((poly_locale_t) -1L)
 
 enum poly_lc_masks
 {
@@ -53,6 +52,8 @@ enum poly_lc_masks
 
     POLY_ALL_MASK = POLY_COLLATE_MASK | POLY_CTYPE_MASK | POLY_MONETARY_MASK | POLY_NUMERIC_MASK | POLY_TIME_MASK
 };
+
+#define POLY_GLOBAL_LOCALE    ((poly_locale_t) -1L)
 
 #ifdef __cplusplus
 }
@@ -87,4 +88,4 @@ enum poly_lc_masks
 
 #endif // POLYLOC_UNDECORATED
 
-#endif
+#endif // _POLY_LOCALE

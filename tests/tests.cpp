@@ -220,10 +220,10 @@ TEST_CASE("(new|free|dup)locale", "[polyC]") {
     string_view locname = "C";
 
     auto ploc = poly_newlocale(POLY_ALL_MASK, locname.data(), NULL);
-    REQUIRE(ploc->name == locname);
+    REQUIRE(polyloc_getname(ploc) == locname);
 
     auto ploc_copy = poly_duplocale(ploc);
-    REQUIRE(ploc_copy->name == locname);
+    REQUIRE(polyloc_getname(ploc_copy) == locname);
     REQUIRE(ploc != ploc_copy);
 
     poly_freelocale(ploc_copy);
@@ -231,7 +231,7 @@ TEST_CASE("(new|free|dup)locale", "[polyC]") {
     locname = COMMA_LC;
 
     auto ploc_base = poly_newlocale(POLY_NUMERIC_MASK | POLY_COLLATE_MASK, locname.data(), ploc);
-    string_view ploc_name = ploc->name;
+    string_view ploc_name = polyloc_getname(ploc_base);
     REQUIRE(ploc_base);
     REQUIRE(ploc_base == ploc);
     CHECK(ploc_name.find(locname) != string_view::npos);
