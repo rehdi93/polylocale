@@ -4,7 +4,6 @@
 #include <locale>
 #include <cstdarg>
 #include <iostream>
-
 #include "polyimpl.h"
 
 

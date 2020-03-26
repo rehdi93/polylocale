@@ -31,26 +31,26 @@ constexpr char FMT_FROM_VA = '*';
 template <class T, std::size_t N>
 constexpr std::size_t countof(const T(&array)[N]) noexcept { return N; }
 
-bool isfmtc(unsigned char ch)
+bool isfmtc(char ch)
 {
     using namespace std;
 
     auto e = end(FMT_ALL);
     return find(begin(FMT_ALL), e, ch) != e;
 }
-bool isfmt(unsigned char ch)
+bool isfmt(char ch)
 {
     using namespace std;
-    return isfmtc(ch) || isdigit(ch, locale::classic());
+    return isfmtc(ch) || isdigit((char)ch, locale::classic());
 }
-bool isfmttype(unsigned char ch)
+bool isfmttype(char ch)
 {
     using namespace std;
 
     auto e = end(FMT_TYPES);
     return find(begin(FMT_TYPES), e, ch) != e;
 }
-bool isfmtflag(unsigned char ch)
+bool isfmtflag(char ch)
 {
     using namespace std;
     auto e = end(FMT_FLAGS);
@@ -60,7 +60,7 @@ bool isfmtflag(unsigned char ch)
 template <class StrView>
 long svtol(StrView sv, size_t* pos = 0, int base = 10)
 {
-    typename StrView::pointer pend;
+    typename StrView::value_type* pend;
     auto pbeg = sv.data();
     long val = strtol(pbeg, &pend, base);
 
@@ -87,10 +87,9 @@ red::string_view fmt_tok(red::string_view line)
 {
     // "%# +o| %#o" "%10.5d|:%10.5d"
     using namespace std;
-    using uchar = unsigned char;
 
     int offs = 1;
-    auto fmtIt = adjacent_find(begin(line)+1, end(line), [&](uchar l, uchar r) mutable {
+    auto fmtIt = adjacent_find(begin(line)+1, end(line), [&](char l, char r) mutable {
         if (isfmt(l) && isfmttype(r)) {
             offs++;
             return true;
@@ -106,15 +105,20 @@ red::string_view fmt_tok(red::string_view line)
     return tok;
 }
 
+struct va_deleter
+{
+    using pointer = va_list*;
+
+    void operator () (pointer va) const {
+        va_end(*va);
+    }
+};
+
+
 } // unnamed
 
 
 
-#ifdef __GNUC__
-using va_list_ref = va_list;
-#else
-using va_list_ref = va_list&;
-#endif
 
 enum class arg_flags : unsigned short
 {
@@ -186,138 +190,29 @@ static fmtspec_t parsefmt(const std::string& str, std::locale const& locale);
 
 struct printf_arg
 {
-    
-    printf_arg(fmtspec_t fmts, va_list_ref args)
-    : fmtspec(fmts), va(args)
+    printf_arg(fmtspec_t fmts)
+    : fmtspec(fmts)
     {
     }
 
 
     arg_flags aflags{};
     fmtspec_t fmtspec;
-    va_list_ref va;
 
     // print value
-    auto put(std::ostream& outs)
+    auto put(std::ostream& outs, va_list* va)
     {
         stream_state _ = outs;
 
-        setup(outs);
-
-        switch (fmtspec.conversion)
-        {
-        case 'C': // wide char TODO
-            aflags |= arg_flags::wide;
-        case 'c': // char
-            if (bm::has(aflags, arg_flags::wide)) {
-                auto v = va_arg(va, wint_t);
-                wchar_t cp[1] = { (wchar_t)v };
-                put_str(outs, { cp, 1 });
-            }
-            else {
-                auto v = va_arg(va, int);
-                char cp[1] = { (char)v };
-                put_str(outs, { cp, 1 });
-            }
-            break;
-
-        case 'u': // Unsigned decimal integer
-            outs << std::dec;
-            goto common_uint;
-
-        case 'd': // Signed decimal integer
-        case 'i':
-            outs << std::dec;
-
-            if (bitmask::has(aflags, arg_flags::wide)) {
-                put_int(outs, va_arg(va, int64_t));
-            }
-            else {
-                put_int(outs, va_arg(va, int32_t));
-            }
-            break;
-
-        case 'o': // Unsigned octal integer
-            outs << std::oct;
-            goto common_uint;
-
-        case 'X': // Unsigned hexadecimal integer w/ uppercase letters
-            outs.setf(ios::uppercase);
-        case 'x': // Unsigned hexadecimal integer w/ lowercase letters
-            outs << std::hex;
-            goto common_uint;
-
-        case 'E': // float, scientific notation
-            outs.setf(ios::uppercase);
-        case 'e':
-            outs << std::scientific;
-            put_fp(outs, va_arg(va, double));
-            break;
-
-        case 'F': // float, fixed notation
-            outs.setf(ios::uppercase);
-        case 'f':
-            outs << std::fixed;
-            put_fp(outs, va_arg(va, double));
-            break;
-
-        case 'G': // float, general notation
-            outs.setf(ios::uppercase);
-        case 'g':
-            outs << std::defaultfloat;
-            put_fp(outs, va_arg(va, double));
-            break;
-
-        case 'A': // hex float
-            outs.setf(ios::uppercase);
-        case 'a':
-            outs << std::hexfloat;
-            put_fp(outs, va_arg(va, double));
-            break;
-
-        case 'p': // pointer
-            outs << std::hex << va_arg(va, void*);
-            break;
-
-        case 'S': // wide string TODO
-            aflags |= arg_flags::wide;
-            put_str(outs, va_arg(va, wchar_t*));
-            break;
-        case 's': // string
-            put_str(outs, va_arg(va, char*));
-            break;
-
-        case 'n': // weird write-bytes specifier (not implemented)
-        default:
-            // invalid, print fmt as-is minus %
-            outs << fmtspec.fmt.substr(1);
-            break;
-
-            // https://docs.microsoft.com/en-us/cpp/c-runtime-library/format-specification-syntax-printf-and-wprintf-functions?view=vs-2019#argument-size-specification
-            // integer args w/o size spec are treated as 32bit
-        common_uint:
-            if (bitmask::has(aflags, arg_flags::wide)) {
-                put_int(outs, va_arg(va, uint64_t));
-            }
-            else {
-                put_int(outs, va_arg(va, uint32_t));
-            }
-            break;
-        }
-    }
-
-private:
-    void setup(std::ostream& os)
-    {
         for (auto f : fmtspec.flags)
         {
             switch (f)
             {
             case '-': // left justify
-                os << std::left;
+                outs << std::left;
                 break;
             case '+': // show positive sign
-                os << std::showpos;
+                outs << std::showpos;
                 break;
             case ' ': // Use a blank to prefix the output value if it is signed and positive, 
                 aflags |= arg_flags::blankpos;
@@ -326,7 +221,7 @@ private:
                 aflags |= arg_flags::altform;
                 break;
             case '0':
-                os.fill('0');
+                outs.fill('0');
                 break;
             default:
                 break;
@@ -334,19 +229,19 @@ private:
         }
 
         // ' ' has no effect if '+' is set
-        if (bm::has(os.flags(), ios::showpos))
+        if (bm::has(outs.flags(), ios::showpos))
         {
             aflags &= ~arg_flags::blankpos;
         }
 
         if (fmtspec.field_width == fmtspec.VAL_VA)
-            fmtspec.field_width = va_arg(va, int);
+            fmtspec.field_width = va_arg(*va, int);
 
         if (fmtspec.precision == fmtspec.VAL_VA)
-            fmtspec.precision = va_arg(va, int);
+            fmtspec.precision = va_arg(*va, int);
 
-        os.width(fmtspec.field_width > 0 ? fmtspec.field_width : 0);
-        os.precision(fmtspec.precision > 0 ? fmtspec.precision : 0);
+        outs.width(fmtspec.field_width > 0 ? fmtspec.field_width : 0);
+        outs.precision(fmtspec.precision > 0 ? fmtspec.precision : 0);
 
         if (!fmtspec.length_mod.empty())
         {
@@ -392,7 +287,112 @@ private:
                     aflags |= arg_flags::wide;
             }
         }
+
+        switch (fmtspec.conversion)
+        {
+        case 'C': // wide char TODO
+            aflags |= arg_flags::wide;
+        case 'c': // char
+            if (bm::has(aflags, arg_flags::wide)) {
+                auto v = va_arg(*va, wint_t);
+                wchar_t cp[1] = { (wchar_t)v };
+                put_str(outs, { cp, 1 });
+            }
+            else {
+                auto v = va_arg(*va, int);
+                char cp[1] = { (char)v };
+                put_str(outs, { cp, 1 });
+            }
+            break;
+
+        case 'u': // Unsigned decimal integer
+            outs << std::dec;
+            goto common_uint;
+
+        case 'd': // Signed decimal integer
+        case 'i':
+            outs << std::dec;
+
+            if (bitmask::has(aflags, arg_flags::wide)) {
+                put_int(outs, va_arg(*va, int64_t));
+            }
+            else {
+                put_int(outs, va_arg(*va, int32_t));
+            }
+            break;
+
+        case 'o': // Unsigned octal integer
+            outs << std::oct;
+            goto common_uint;
+
+        case 'X': // Unsigned hexadecimal integer w/ uppercase letters
+            outs.setf(ios::uppercase);
+        case 'x': // Unsigned hexadecimal integer w/ lowercase letters
+            outs << std::hex;
+            goto common_uint;
+
+        case 'E': // float, scientific notation
+            outs.setf(ios::uppercase);
+        case 'e':
+            outs << std::scientific;
+            put_fp(outs, va_arg(*va, double));
+            break;
+
+        case 'F': // float, fixed notation
+            outs.setf(ios::uppercase);
+        case 'f':
+            outs << std::fixed;
+            put_fp(outs, va_arg(*va, double));
+            break;
+
+        case 'G': // float, general notation
+            outs.setf(ios::uppercase);
+        case 'g':
+            outs << std::defaultfloat;
+            put_fp(outs, va_arg(*va, double));
+            break;
+
+        case 'A': // hex float
+            outs.setf(ios::uppercase);
+        case 'a':
+            outs << std::hexfloat;
+            put_fp(outs, va_arg(*va, double));
+            break;
+
+        case 'p': // pointer
+            outs << std::hex << va_arg(*va, void*);
+            break;
+
+        case 'S': // wide string TODO
+            aflags |= arg_flags::wide;
+            put_str(outs, va_arg(*va, wchar_t*));
+            break;
+        case 's': // string
+            put_str(outs, va_arg(*va, char*));
+            break;
+
+        case 'n': // weird write-bytes specifier (not implemented)
+        default:
+            // invalid, print fmt as-is minus %
+            outs << fmtspec.fmt.substr(1);
+            break;
+
+            // https://docs.microsoft.com/en-us/cpp/c-runtime-library/format-specification-syntax-printf-and-wprintf-functions?view=vs-2019#argument-size-specification
+            // integer args w/o size spec are treated as 32bit
+        common_uint:
+            if (bitmask::has(aflags, arg_flags::wide)) {
+                uint64_t num = va_arg(*va, uint64_t);
+                put_int(outs, num);
+            }
+            else {
+                uint32_t num = va_arg(*va, uint32_t);
+                put_int(outs, num);
+            }
+            break;
+        }
     }
+
+private:
 
     void put_fp(std::ostream& os, double number) const
     {
@@ -487,7 +487,7 @@ private:
 
 
 
-int red::polyloc::do_printf(string_view fmt, std::ostream& outs, const std::locale& loc, va_list va)
+int red::polyloc::do_printf(string_view fmt, std::ostream& outs, const std::locale& loc, va_list va_args)
 {
     if (fmt.empty())
         return 0;
@@ -497,6 +497,14 @@ int red::polyloc::do_printf(string_view fmt, std::ostream& outs, const std::loca
     auto format = fmt;
     std::string spec;
     spec.reserve(30);
+
+#ifdef __GNUC__
+    va_list va;
+    va_copy(va, va_args);
+    auto _g_ = std::unique_ptr<va_list, va_deleter>(&va);
+#else
+    auto va = va_args;
+#endif // __GNUC__
 
     for (size_t i;;)
     {
@@ -532,8 +540,10 @@ int red::polyloc::do_printf(string_view fmt, std::ostream& outs, const std::loca
             spec.assign(format, 0, 30);
 
             auto fmtspec = parsefmt(spec, loc);
-            printf_arg arg{ fmtspec, va };
-            arg.put(outs);
+            printf_arg arg{ fmtspec };
+
+            arg.put(outs, &va);
+
 
             format.remove_prefix(arg.fmtspec.fmt.size());
         }
