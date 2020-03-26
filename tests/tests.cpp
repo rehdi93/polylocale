@@ -2,7 +2,10 @@
 #include <memory>
 #include <string>
 #include <array>
+#include <vector>
 #include <cstddef>
+#include <locale>
+
 #include "polylocale.h"
 #include "boost/utility/string_view.hpp"
 #define CATCH_CONFIG_MAIN
@@ -17,7 +20,7 @@ struct char_buffer : std::array<char, Count>
     char_buffer()
     {
         // sprintf must write the terminating null
-        fill('\3');
+        this->fill('\3');
     }
 
     operator char* () {
@@ -36,12 +39,85 @@ static_assert(std::is_same_v<locale_t, poly_locale*>, "locale_t is not poly_loca
 using locale_ptr_t = std::unique_ptr<poly_locale, decltype(poly_freelocale)*>;
 locale_ptr_t locale_ptr(poly_locale* ploc) { return locale_ptr_t(ploc, poly_freelocale); }
 
+std::array locs_virgula_decimal{
+    "pt_BR", "pt_BR.utf8",
+    "pt_PT", "pt_PT.utf8",
+    "fr_FR", "fr_FR.utf8",
+    "ru_RU", "ru_RU.utf8",
+    "ca_FR", "ca_FR.utf8"
+};
+std::array locs_ponto_decimal{
+    "en_US", "en_US.utf8",
+    "en_GB", "en_GB.utf8",
+    "en_CA", "en_CA.utf8"
+    "POSIX", "C"
+};
+
+
+// look for a locale by decimal point
+static auto find_num_locale(char dp) -> std::string
+{
+    using std::locale; using std::use_facet; 
+    using std::numpunct; using std::clog;
+    auto funcname = __func__;
+    auto logg = [funcname]() -> std::ostream& {
+        return std::clog << '[' << funcname << "] ";
+    };
+    
+    logg() << "looking for a locale with decimal '"<<dp<<"'\n";
+
+    auto userlc = locale{ "" };
+    if (use_facet<numpunct<char>>(userlc).decimal_point() == dp)
+    {
+        auto n = userlc.name();
+        logg() << "found user locale: " << std::quoted(n) << '\n';
+        return n;
+    }
+
+    std::vector<const char*> candidatos;
+
+    if (dp == ',')
+    {
+        candidatos.insert(candidatos.end(), begin(locs_virgula_decimal), end(locs_virgula_decimal));
+    }
+    else if (dp == '.')
+    {
+        candidatos.insert(candidatos.end(), begin(locs_ponto_decimal), end(locs_ponto_decimal));
+    }
+
+    for (auto name : candidatos)
+    {
+        try
+        {
+            locale l{ name };
+            logg() << std::quoted(name) << " found.\n";
+            return name;
+        }
+        catch (const std::runtime_error&)
+        {
+            // not supported
+            logg() << std::quoted(name) << " not found.\n";
+        }
+        catch (const std::exception& e)
+        {
+            logg() << "Unknown error: " << std::quoted(e.what()) << '\n';
+            std::exit(99);
+        }
+    }
+
+    logg() << "No locale found. D:\n";
+    exit(42);
+}
+
+static const std::string COMMA_LC = find_num_locale(','), POINT_LC = find_num_locale('.');
+
 
 struct sprintf_test_result
 {
     std::string expected, result, format;
     int returnValue;
 };
+
 
 template<typename ...VA>
 sprintf_test_result do_test_sprintf(std::string expected, char* buf, size_t count, std::string fmt, poly_locale_t loc, VA... rest)
@@ -140,7 +216,7 @@ TEST_CASE("Formating floating point", "[sprintf_l]")
     TEST_FMT("2e-315:1e+308", "%g:%g", 2e-315, 1e+308);
 }
 
-TEST_CASE("(new|free|dup)locale", "[poly C]") {
+TEST_CASE("(new|free|dup)locale", "[polyC]") {
     string_view locname = "C";
 
     auto ploc = poly_newlocale(POLY_ALL_MASK, locname.data(), NULL);
@@ -152,10 +228,13 @@ TEST_CASE("(new|free|dup)locale", "[poly C]") {
 
     poly_freelocale(ploc_copy);
 
-    locname = "pt_BR";
+    locname = COMMA_LC;
+
     auto ploc_base = poly_newlocale(POLY_NUMERIC_MASK | POLY_COLLATE_MASK, locname.data(), ploc);
-    CHECK(ploc_base->name == locname);
+    string_view ploc_name = ploc->name;
+    REQUIRE(ploc_base);
     REQUIRE(ploc_base == ploc);
+    CHECK(ploc_name.find(locname) != string_view::npos);
 
     poly_freelocale(ploc);
 }
@@ -253,42 +332,40 @@ TEST_CASE("PI to string")
     CAPTURE(fmt);
 
     SECTION("decimal point") {
-        auto en_us = locale_ptr(poly_newlocale(POLY_ALL_MASK, "en_US", NULL));
+        auto en_us = locale_ptr(poly_newlocale(POLY_ALL_MASK, POINT_LC.c_str(), NULL));
         poly_snprintf_l(buffer, 25, fmt, en_us.get(), PI);
         string_view result = buffer;
-        INFO("en_US");
+        CAPTURE(POINT_LC);
         REQUIRE(result == "3.1416");
     }
 
     SECTION("decimal comma") {
-        auto pt_br = locale_ptr(poly_newlocale(POLY_ALL_MASK, "pt_BR", NULL));
+        auto pt_br = locale_ptr(poly_newlocale(POLY_ALL_MASK, COMMA_LC.c_str(), NULL));
         poly_snprintf_l(buffer, 25, fmt, pt_br.get(), PI);
         string_view result = buffer;
-        INFO("pt_BR");
+        CAPTURE(COMMA_LC);
         REQUIRE(result == "3,1416");
     }
 }
 
 TEST_CASE("string to PI", "[strtod]")
 {
-    auto en_us = locale_ptr(poly_newlocale(POLY_ALL_MASK, "en_US", NULL));
-    auto pt_br = locale_ptr(poly_newlocale(POLY_ALL_MASK, "pt_BR", NULL));
-
     auto PI_point = "3.1416";
     auto PI_comma = "3,1416";
     const double PI =3.1416;
     double result;
 
-    {
+    SECTION("decimal point") {
+        auto en_us = locale_ptr(poly_newlocale(POLY_ALL_MASK, POINT_LC.c_str(), NULL));
         result = poly_strtod_l(PI_point, NULL, en_us.get());
-        INFO("en_US");
         CAPTURE(PI_point);
         REQUIRE(result == PI);
     }
-    {
+
+    SECTION("decimal comma") {
+        auto pt_br = locale_ptr(poly_newlocale(POLY_ALL_MASK, COMMA_LC.c_str(), NULL));
         result = poly_strtod_l(PI_comma, NULL, pt_br.get());
-        INFO("pt_BR");
-        CAPTURE(PI_comma);
+        CAPTURE(PI_comma, COMMA_LC);
         REQUIRE(result == PI);
     }
 
