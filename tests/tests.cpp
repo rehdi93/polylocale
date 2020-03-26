@@ -141,7 +141,7 @@ sprintf_test_result do_test_sprintf(std::string expected, char* buf, size_t coun
 #define TEST_FMT(expected_, fmt, ...) FMT_TEST_BASE(expected_, fmt, buffer, size_t(-1), ploc, __VA_ARGS__)
 
 
-TEST_CASE("Formating integers", "[sprintf_l]")
+TEST_CASE("Formating integers", "[sprintf][format]")
 {
     auto localename = "C";
     auto loc = locale_ptr(poly_newlocale(POLY_ALL_MASK, localename, NULL));
@@ -174,7 +174,7 @@ TEST_CASE("Formating integers", "[sprintf_l]")
     TEST_FMT("+1024 -768", "%+lli % ld", 1024ll, -768l);
 }
 
-TEST_CASE("Formating floating point", "[sprintf_l]")
+TEST_CASE("Formating floating point", "[sprintf][format]")
 {
     auto localename = "C";
     poly_locale_t ploc = poly_newlocale(POLY_ALL_MASK, localename, NULL);
@@ -234,7 +234,7 @@ TEST_CASE("(new|free|dup)locale", "[polyC]") {
     poly_freelocale(ploc);
 }
 
-TEST_CASE("sprintf_l tests", "[sprintf_l]")
+TEST_CASE("sprintf_l tests", "[sprintf]")
 {
     char_buffer<1024> buffer;
     std::string locname = "C";
@@ -273,7 +273,7 @@ TEST_CASE("Size handler bug", "[bug][.]")
     REQUIRE(expected == result);
 }
 
-TEST_CASE("snprintf_l tests", "[snprintf_l]") {
+TEST_CASE("snprintf_l tests", "[snprintf]") {
     auto localename = "C";
     auto loc = locale_ptr(poly_newlocale(POLY_ALL_MASK, localename, NULL));
     char_buffer<1024> buffer;
@@ -318,7 +318,7 @@ TEST_CASE("snprintf_l tests", "[snprintf_l]") {
     }
 }
 
-TEST_CASE("PI to string")
+TEST_CASE("PI to string", "[pi][snprintf]")
 {
     const auto PI = 3.141592653;
     char_buffer<25> buffer;
@@ -343,7 +343,7 @@ TEST_CASE("PI to string")
     }
 }
 
-TEST_CASE("string to PI", "[strtod]")
+TEST_CASE("string to PI", "[pi][strtod]")
 {
     auto PI_point = "3.1416";
     auto PI_comma = "3,1416";

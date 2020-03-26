@@ -440,7 +440,7 @@ private:
 
         auto name = os.getloc().name();
         wstring_convert<cvt> wsc{ new cvt(name) };
-        std::string tmp = wsc.to_bytes(begin(str), end(str));
+        std::string tmp = wsc.to_bytes(str.data(), str.data()+str.size());
         
         put_str(os, tmp);
     }
