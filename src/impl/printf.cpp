@@ -6,6 +6,8 @@
 #include <algorithm>
 #include <cassert>
 #include <cmath>
+#include <codecvt>
+
 
 #include "bitmask.hpp"
 
@@ -41,7 +43,7 @@ bool isfmtc(char ch)
 bool isfmt(char ch)
 {
     using namespace std;
-    return isfmtc(ch) || isdigit((char)ch, locale::classic());
+    return isfmtc(ch) || isdigit(ch, locale::classic());
 }
 bool isfmttype(char ch)
 {
@@ -60,9 +62,18 @@ bool isfmtflag(char ch)
 template <class StrView>
 long svtol(StrView sv, size_t* pos = 0, int base = 10)
 {
-    typename StrView::value_type* pend;
+    using charT = typename StrView::value_type;
+
+    charT* pend;
     auto pbeg = sv.data();
-    long val = strtol(pbeg, &pend, base);
+    long val;
+
+    if constexpr (std::is_same_v<charT, char>) {
+        val = strtol(pbeg, &pend, base);
+    }
+    else if constexpr (std::is_same_v<charT, wchar_t>) {
+        val = wcstol(pbeg, &pend, base);
+    }
 
     if (pbeg == pend) {
         throw std::invalid_argument("invalid svtol argument");
@@ -80,6 +91,7 @@ long svtol(StrView sv, size_t* pos = 0, int base = 10)
 
 /*
     Tokenizes a single format spec. from 'line'.
+    - preconditions: line[0]==FMT_START
 
     A printf format specifier start with a '%' and ends with a conversion spec.
 */
@@ -114,6 +126,13 @@ struct va_deleter
     }
 };
 
+// utility wrapper to adapt locale-bound facets for wstring/wbuffer convert
+template<class Facet>
+struct facet_adapter : Facet
+{
+    using Facet::Facet; // inherit constructors
+    ~facet_adapter() {}
+};
 
 } // unnamed
 
@@ -416,11 +435,13 @@ private:
     }
 
     void put_str(std::ostream& os, red::wstring_view str) const {
-        std::string tmp( str.size(), '\0' );
+        using std::codecvt_byname; using std::wstring_convert;
+        using cvt = facet_adapter<codecvt_byname<wchar_t, char, std::mbstate_t>>;
 
-        auto& f = std::use_facet<std::ctype<wchar_t>>(os.getloc());
-        f.narrow(str.data(), str.data()+str.size(), '?', &tmp[0]);
-
+        auto name = os.getloc().name();
+        wstring_convert<cvt> wsc{ new cvt(name) };
+        std::string tmp = wsc.to_bytes(begin(str), end(str));
+        
         put_str(os, tmp);
     }
 
@@ -638,7 +659,11 @@ fmtspec_t parsefmt(const std::string& str, std::locale const& locale)
     if (i != npos)
     {
         start = i;
-        i = spec.find_first_not_of(FMT_SIZES, start);
+        if (spec[i] == 'I')
+            i = spec.find_first_not_of("6432", start);
+        else
+            i = spec.find_first_not_of(FMT_SIZES, start);
+
         fmtspec.length_mod = spec.substr(start, i - start);
     }
 
