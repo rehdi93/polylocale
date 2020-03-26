@@ -17,32 +17,21 @@
 #include <ext/stdio_filebuf.h>
 #endif
 
-struct poly_impl
+struct poly_locale
 {
     std::locale loc;
     std::string name;
-
-    poly_impl() : poly_impl(std::locale()) {}
-
-    explicit poly_impl(const std::locale& lc)
-        : loc(lc), name(lc.name()) {}
 };
 
 
 
 static auto make_polylocale(std::locale const& base) {
-    auto plc = std::make_unique<poly_locale>();
-    plc->impl = new poly_impl{ base };
-    plc->name = plc->impl->name.c_str();
-    
+    auto plc = std::make_unique<poly_locale>(poly_locale{ base, base.name() });
     return plc;
 }
 
-static auto copy_polylocale(poly_locale_t loc) {
-    auto plc = std::make_unique<poly_locale>();
-    plc->impl = new poly_impl(*loc->impl);
-    plc->name = plc->impl->name.c_str();
-
+static auto copy_polylocale(poly_locale_t ploc) {
+    auto plc = std::make_unique<poly_locale>(*ploc);
     return plc;
 }
 
@@ -50,8 +39,11 @@ static auto getloc(poly_locale_t ploc) -> std::locale
 {
     if (ploc == POLY_GLOBAL_LOCALE)
         return {};
+    if (!ploc) {
+        throw std::invalid_argument("ploc is null!");
+    }
 
-    return ploc->impl->loc;
+    return ploc->loc;
 }
 
 static auto mask_to_cat(int mask) noexcept -> std::locale::category
@@ -95,11 +87,9 @@ poly_locale_t poly_newlocale(int category_mask, const char* localename, poly_loc
 
         if (base)
         {
-            auto loc = getloc(base);
-
-            *base->impl = poly_impl(std::locale(loc, localename, cats));
-            base->name = base->impl->name.c_str();
-
+            auto baseloc = getloc(base);
+            auto newloc = std::locale(baseloc, localename, cats);
+            *base = poly_locale{newloc, newloc.name()};
             return base;
         }
         else
@@ -125,9 +115,6 @@ poly_locale_t poly_newlocale(int category_mask, const char* localename, poly_loc
 
 // https://pubs.opengroup.org/onlinepubs/9699919799/functions/freelocale.html
 void poly_freelocale(poly_locale_t loc) {
-    if (loc)
-        delete loc->impl;
-
     delete loc;
 }
 
@@ -281,6 +268,11 @@ int poly_vfprintf_l(FILE* cfile, const char* fmt, poly_locale_t loc, va_list arg
 #endif
 
     return result;
+}
+
+const char* polyloc_getname(poly_locale_t l)
+{
+    return l->name.c_str();
 }
 
 } // extern C

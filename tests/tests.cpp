@@ -17,7 +17,7 @@ struct char_buffer : std::array<char, Count>
     char_buffer()
     {
         // sprintf must write the terminating null
-        fill('\3');
+        this->fill('\3');
     }
 
     operator char* () {
@@ -73,8 +73,7 @@ sprintf_test_result do_test_sprintf(std::string expected, char* buf, size_t coun
 TEST_CASE("Formating integers", "[sprintf_l]")
 {
     auto localename = "C";
-    auto loc = locale_ptr(poly_newlocale(POLY_ALL_MASK, localename, NULL));
-    auto ploc = loc.get();
+    auto ploc = poly_newlocale(POLY_ALL_MASK, localename, NULL);
     char_buffer<1024> buffer;
 
     INFO("Locale: " << localename);
@@ -140,21 +139,21 @@ TEST_CASE("Formating floating point", "[sprintf_l]")
     TEST_FMT("2e-315:1e+308", "%g:%g", 2e-315, 1e+308);
 }
 
-TEST_CASE("(new|free|dup)locale", "[poly C]") {
+TEST_CASE("(new|free|dup)locale", "[polyC]") {
     string_view locname = "C";
-
     auto ploc = poly_newlocale(POLY_ALL_MASK, locname.data(), NULL);
-    REQUIRE(ploc->name == locname);
+    REQUIRE(polyloc_getname(ploc) == locname);
 
     auto ploc_copy = poly_duplocale(ploc);
-    REQUIRE(ploc_copy->name == locname);
+    REQUIRE(polyloc_getname(ploc_copy) == string_view("C"));
     REQUIRE(ploc != ploc_copy);
 
     poly_freelocale(ploc_copy);
 
-    locname = "pt_BR";
-    auto ploc_base = poly_newlocale(POLY_NUMERIC_MASK | POLY_COLLATE_MASK, locname.data(), ploc);
-    CHECK(ploc_base->name == locname);
+    locname = "pt_BR.UTF-8";
+    auto ploc_base = poly_newlocale(POLY_NUMERIC_MASK, locname.data(), ploc);
+    REQUIRE(ploc_base);
+    CHECK(polyloc_getname(ploc_base) == locname);
     REQUIRE(ploc_base == ploc);
 
     poly_freelocale(ploc);
@@ -201,16 +200,15 @@ TEST_CASE("Size handler bug", "[bug][.]")
 
 TEST_CASE("snprintf_l tests", "[snprintf_l]") {
     auto localename = "C";
-    auto loc = locale_ptr(poly_newlocale(POLY_ALL_MASK, localename, NULL));
+    auto ploc = poly_newlocale(POLY_ALL_MASK, localename, NULL);
     char_buffer<1024> buffer;
-    auto ploc = loc.get();
     const double pow_2_75 = 37778931862957161709568.0;
 
     INFO("Locale: " << localename);
 
     SECTION(R"(" %s     %d" --> " b     123")")
     {
-        auto tr = do_test_sprintf(" b     123", buffer, 100, " %s     %d", loc.get(), "b", 123);
+        auto tr = do_test_sprintf(" b     123", buffer, 100, " %s     %d", ploc, "b", 123);
         CAPTURE(tr.expected, tr.result, tr.format, tr.returnValue);
         REQUIRE(tr.expected == tr.result);
     }
@@ -244,7 +242,7 @@ TEST_CASE("snprintf_l tests", "[snprintf_l]") {
     }
 }
 
-TEST_CASE("PI to string")
+TEST_CASE("PI to string", "[locale]")
 {
     const auto PI = 3.141592653;
     char_buffer<25> buffer;
@@ -253,7 +251,7 @@ TEST_CASE("PI to string")
     CAPTURE(fmt);
 
     SECTION("decimal point") {
-        auto en_us = locale_ptr(poly_newlocale(POLY_ALL_MASK, "en_US", NULL));
+        auto en_us = locale_ptr(poly_newlocale(POLY_NUMERIC_MASK, "en_US", NULL));
         poly_snprintf_l(buffer, 25, fmt, en_us.get(), PI);
         string_view result = buffer;
         INFO("en_US");
@@ -261,7 +259,7 @@ TEST_CASE("PI to string")
     }
 
     SECTION("decimal comma") {
-        auto pt_br = locale_ptr(poly_newlocale(POLY_ALL_MASK, "pt_BR", NULL));
+        auto pt_br = locale_ptr(poly_newlocale(POLY_NUMERIC_MASK, "pt_BR", NULL));
         poly_snprintf_l(buffer, 25, fmt, pt_br.get(), PI);
         string_view result = buffer;
         INFO("pt_BR");
@@ -271,21 +269,20 @@ TEST_CASE("PI to string")
 
 TEST_CASE("string to PI", "[strtod]")
 {
-    auto en_us = locale_ptr(poly_newlocale(POLY_ALL_MASK, "en_US", NULL));
-    auto pt_br = locale_ptr(poly_newlocale(POLY_ALL_MASK, "pt_BR", NULL));
-
     auto PI_point = "3.1416";
     auto PI_comma = "3,1416";
     const double PI =3.1416;
     double result;
 
     {
+        auto en_us = locale_ptr(poly_newlocale(POLY_ALL_MASK, "en_US", NULL));
         result = poly_strtod_l(PI_point, NULL, en_us.get());
         INFO("en_US");
         CAPTURE(PI_point);
         REQUIRE(result == PI);
     }
     {
+        auto pt_br = locale_ptr(poly_newlocale(POLY_ALL_MASK, "pt_BR", NULL));
         result = poly_strtod_l(PI_comma, NULL, pt_br.get());
         INFO("pt_BR");
         CAPTURE(PI_comma);
