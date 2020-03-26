@@ -59,18 +59,14 @@ static auto find_num_locale(char dp) -> std::string
 {
     using std::locale; using std::use_facet; 
     using std::numpunct; using std::clog;
-    auto funcname = __func__;
-    auto logg = [funcname]() -> std::ostream& {
-        return std::clog << '[' << funcname << "] ";
-    };
-    
-    logg() << "looking for a locale with decimal '"<<dp<<"'\n";
+
+    clog << '[' << __func__ << "] " << "looking for a locale with decimal '"<<dp<<"'";
 
     auto userlc = locale{ "" };
     if (use_facet<numpunct<char>>(userlc).decimal_point() == dp)
     {
         auto n = userlc.name();
-        logg() << "found user locale: " << std::quoted(n) << '\n';
+        clog << " - " << std::quoted(n) << " found.\n";
         return n;
     }
 
@@ -90,22 +86,21 @@ static auto find_num_locale(char dp) -> std::string
         try
         {
             locale l{ name };
-            logg() << std::quoted(name) << " found.\n";
+            clog << " - " << std::quoted(name) << " found.\n";
             return name;
         }
         catch (const std::runtime_error&)
         {
             // not supported
-            logg() << std::quoted(name) << " not found.\n";
         }
         catch (const std::exception& e)
         {
-            logg() << "Unknown error: " << std::quoted(e.what()) << '\n';
+            clog << " - " "Unknown error: " << std::quoted(e.what()) << '\n';
             std::exit(99);
         }
     }
 
-    logg() << "No locale found. D:\n";
+    clog << " - " "No locale found. D:\n";
     exit(42);
 }
 

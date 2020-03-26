@@ -1,6 +1,6 @@
 ﻿# CMakeList.txt : CMake project for polylocale
 #
-cmake_minimum_required (VERSION 3.8)
+cmake_minimum_required (VERSION 3.12.4)
 
 project ("polylocale" VERSION 0.0.6)
 
