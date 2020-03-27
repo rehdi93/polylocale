@@ -376,10 +376,6 @@ int red::polyloc::do_printf(string_view fmt, std::ostream& outs, const std::loca
 
     outs.imbue(loc);
 
-    auto format = fmt;
-    std::string spec;
-    spec.reserve(30);
-
 #ifdef __GNUC__
     va_list va;
     va_copy(va, va_args);
@@ -388,48 +384,26 @@ int red::polyloc::do_printf(string_view fmt, std::ostream& outs, const std::loca
     auto va = va_args;
 #endif // __GNUC__
 
-    for (size_t i;;)
+    auto format = std::string(fmt);
+    fmt_tokenizer toknz{ format };
+
+    for (auto& tok : toknz)
     {
-        // look for %
-        i = format.find(FMT_START);
-        
-        if (i == string_view::npos)
-        {
-            // no more specs, we're done
-            outs << format;
-            return outs.tellp();
-        }
-        else if (i+1 == format.size())
-        {
-            // format ends with a single '%'
-            return outs.tellp();
-        }
+        if (tok.empty()) continue;
 
-        auto txtb4 = format.substr(0, i);
-
-        if (format[i + 1] == FMT_START)
+        if (tok[0] == '%' && tok.size() >= 2)
         {
-            // escaped %
-            outs << txtb4 << format[i + 1];
-            format.remove_prefix(txtb4.size()+2);
+            auto fmtspec = parsefmt(tok, loc);
+            printf_arg pfarg{ fmtspec };
+            pfarg.put(outs, &va);
         }
         else
         {
-            outs << txtb4;
-
-            // possible fmtspec(s)
-            format.remove_prefix(i);
-            spec.assign(format, 0, 30);
-
-            auto fmtspec = parsefmt(spec, loc);
-            printf_arg arg{ fmtspec };
-
-            arg.put(outs, &va);
-
-
-            format.remove_prefix(arg.fmtspec.fmt.size());
+            outs << tok;
         }
     }
+
+    return outs.tellp();
 }
 
 auto red::polyloc::do_printf(string_view format, std::ostream& outs, size_t max, const std::locale& loc, va_list va) -> write_result
