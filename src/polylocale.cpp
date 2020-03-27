@@ -40,7 +40,7 @@ static auto getloc(poly_locale_t ploc) -> std::locale
     if (ploc == POLY_GLOBAL_LOCALE)
         return {};
     if (!ploc) {
-        throw std::invalid_argument("ploc is null!");
+        throw std::invalid_argument("locale_t is null!");
     }
 
     return ploc->loc;

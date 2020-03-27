@@ -1,4 +1,6 @@
 ﻿#include "printf.hpp"
+#include "bitmask.hpp"
+#include "boost/io/ios_state.hpp"
 
 #include <sstream>
 #include <iomanip>
@@ -8,8 +10,6 @@
 #include <cmath>
 #include <codecvt>
 
-
-#include "bitmask.hpp"
 
 using std::ios;
 using namespace std::literals;
@@ -30,8 +30,6 @@ constexpr char FMT_PRECISION = '.';
 // value from VA
 constexpr char FMT_FROM_VA = '*';
 
-template <class T, std::size_t N>
-constexpr std::size_t countof(const T(&array)[N]) noexcept { return N; }
 
 bool isfmtc(char ch)
 {
@@ -59,35 +57,6 @@ bool isfmtflag(char ch)
     return find(begin(FMT_FLAGS), e, ch) != e;
 }
 
-template <class StrView>
-long svtol(StrView sv, size_t* pos = 0, int base = 10)
-{
-    using charT = typename StrView::value_type;
-
-    charT* pend;
-    auto pbeg = sv.data();
-    long val;
-
-    if constexpr (std::is_same_v<charT, char>) {
-        val = strtol(pbeg, &pend, base);
-    }
-    else if constexpr (std::is_same_v<charT, wchar_t>) {
-        val = wcstol(pbeg, &pend, base);
-    }
-
-    if (pbeg == pend) {
-        throw std::invalid_argument("invalid svtol argument");
-    }
-    if (errno == ERANGE) {
-        throw std::out_of_range("svtol argument out of range");
-    }
-
-    if (pos) {
-        *pos = pend - pbeg;
-    }
-
-    return val;
-}
 
 /*
     Tokenizes a single format spec. from 'line'.
@@ -134,9 +103,20 @@ struct facet_adapter : Facet
     ~facet_adapter() {}
 };
 
+template<class Ch, class Tr = std::char_traits<Ch>>
+struct basic_ios_saver
+{
+    using state_type = std::basic_ios<Ch, Tr>;
+
+    explicit basic_ios_saver(state_type& s) : m_wpfsaver(s), m_fillsaver(s)
+    {}
+
+private:
+    boost::io::ios_base_all_saver m_wpfsaver;
+    boost::io::basic_ios_fill_saver<Ch, Tr> m_fillsaver;
+};
+
 } // unnamed
-
-
 
 
 enum class arg_flags : unsigned short
@@ -151,32 +131,6 @@ enum class arg_flags : unsigned short
     sizefield = wide|narrow
 };
 
-struct stream_state
-{
-    ios::fmtflags flags;
-    char fill;
-    std::streamsize width, precision;
-    std::ios& stream;
-
-    stream_state(std::ios& ios)
-        : flags(ios.flags()), fill(ios.fill()),
-        width(ios.width()), precision(ios.precision())
-        , stream(ios)
-    {}
-
-    ~stream_state() noexcept
-    {
-        restore(stream);
-    }
-
-    void restore(std::ios& io) const {
-        io.flags(flags);
-        io.fill(fill);
-        io.width(width);
-        io.precision(precision);
-        //io.imbue(locale);
-    }
-};
 
 // %[flags][width][.precision][size]type
 // worst case scenerio sizes:
@@ -221,7 +175,7 @@ struct printf_arg
     // print value
     auto put(std::ostream& outs, va_list* va)
     {
-        stream_state _ = outs;
+        basic_ios_saver<char> _g_(outs);
 
         for (auto f : fmtspec.flags)
         {
@@ -603,6 +557,7 @@ auto red::polyloc::do_printf(string_view format, std::ostream& outs, size_t max,
 fmtspec_t parsefmt(const std::string& str, std::locale const& locale)
 {
     auto constexpr npos = std::string::npos;
+    using red::svtol;
 
     fmtspec_t fmtspec;
     fmtspec.fmt = fmt_tok(str);
