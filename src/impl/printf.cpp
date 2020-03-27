@@ -1,4 +1,5 @@
 ﻿#include "printf.hpp"
+#include "printf_fmt.hpp"
 #include "bitmask.hpp"
 #include "boost/io/ios_state.hpp"
 
@@ -12,6 +13,7 @@
 
 
 using std::ios;
+using red::polyloc::fmtspec_t;
 using namespace std::literals;
 using namespace bitmask::ops;
 namespace bm = bitmask;
@@ -19,72 +21,6 @@ namespace bm = bitmask;
 // HELPERS
 namespace
 {
-
-constexpr char FMT_START    = '%';
-constexpr char FMT_ALL[]    = "%.*" "-+ #0" "hljztI" "CcudioXxEeFfGgAapSsn" /*"123456789"*/ ;
-constexpr char FMT_FLAGS[]  = "-+ #0";
-constexpr char FMT_TYPES[]  = "CcudioXxEeFfGgAapSsn";
-constexpr char FMT_SIZES[]  = "hljztI";
-// precision
-constexpr char FMT_PRECISION = '.';
-// value from VA
-constexpr char FMT_FROM_VA = '*';
-
-
-bool isfmtc(char ch)
-{
-    using namespace std;
-
-    auto e = end(FMT_ALL);
-    return find(begin(FMT_ALL), e, ch) != e;
-}
-bool isfmt(char ch)
-{
-    using namespace std;
-    return isfmtc(ch) || isdigit(ch, locale::classic());
-}
-bool isfmttype(char ch)
-{
-    using namespace std;
-
-    auto e = end(FMT_TYPES);
-    return find(begin(FMT_TYPES), e, ch) != e;
-}
-bool isfmtflag(char ch)
-{
-    using namespace std;
-    auto e = end(FMT_FLAGS);
-    return find(begin(FMT_FLAGS), e, ch) != e;
-}
-
-
-/*
-    Tokenizes a single format spec. from 'line'.
-    - preconditions: line[0]==FMT_START
-
-    A printf format specifier start with a '%' and ends with a conversion spec.
-*/
-red::string_view fmt_tok(red::string_view line)
-{
-    // "%# +o| %#o" "%10.5d|:%10.5d"
-    using namespace std;
-
-    int offs = 1;
-    auto fmtIt = adjacent_find(begin(line)+1, end(line), [&](char l, char r) mutable {
-        if (isfmt(l) && isfmttype(r)) {
-            offs++;
-            return true;
-        }
-        if (isfmttype(l)) {
-            return true;
-        }
-        return false;
-    });
-    
-    auto count = fmtIt - begin(line) + offs;
-    auto tok = line.substr(0, count);
-    return tok;
-}
 
 struct va_deleter
 {
@@ -131,35 +67,6 @@ enum class arg_flags : unsigned short
     sizefield = wide|narrow
 };
 
-
-// %[flags][width][.precision][size]type
-// worst case scenerio sizes:
-// 1 + 4  +  10 +  1 +  10  +   3  + 1 = 30
-// 10 is from INT_MAX
-struct fmtspec_t
-{
-    red::string_view fmt;
-    red::string_view flags, length_mod;
-    int field_width = -1, precision = -1;
-    char conversion = '\030';
-
-
-    bool valid() const
-    {
-        if (conversion == '\030')
-        {
-            return false;
-        }
-
-        auto end = std::end(FMT_TYPES);
-        auto it = std::find(std::begin(FMT_TYPES), end, conversion);
-        return it != end;
-    }
-
-    static const int VAL_VA = -(int)FMT_FROM_VA, VAL_AUTO = -1;
-};
-
-static fmtspec_t parsefmt(const std::string& str, std::locale const& locale);
 
 struct printf_arg
 {
@@ -551,81 +458,4 @@ auto red::polyloc::do_printf(string_view format, std::ostream& outs, size_t max,
     }
 
     return ret;
-}
-
-
-fmtspec_t parsefmt(const std::string& str, std::locale const& locale)
-{
-    auto constexpr npos = std::string::npos;
-    using red::svtol;
-
-    fmtspec_t fmtspec;
-    fmtspec.fmt = fmt_tok(str);
-    auto spec = fmtspec.fmt;
-    assert(spec[0] == FMT_START && spec.size() >= 2);
-
-    size_t start=1, i=1;
-
-    // Flags
-    i = spec.find_first_not_of(FMT_FLAGS, start);
-    if (i != npos)
-    {
-        fmtspec.flags = spec.substr(1, i - start);
-    }
-    
-    // field width
-    if (spec[i] == FMT_FROM_VA)
-    {
-        fmtspec.field_width = fmtspec.VAL_VA;
-        i++;
-    }
-    else if (std::isdigit(spec[i], locale)) try
-    {
-        size_t converted;
-        fmtspec.field_width = svtol(spec.substr(i), &converted);
-        i += converted;
-    }
-    catch (const std::exception&) {
-        // no conversion took place
-    }
-
-    if (spec[i] == FMT_PRECISION)
-    {
-        i++;
-        if (spec[i] == FMT_FROM_VA)
-        {
-            fmtspec.precision = fmtspec.VAL_VA;
-            i++;
-        }
-        else if (std::isdigit(spec[i], locale)) try
-        {
-            size_t converted;
-            fmtspec.precision = svtol(spec.substr(i), &converted);
-            i += converted;
-        }
-        catch (const std::exception&) {
-            // no conversion took place
-        }
-    }
-
-    // size overrides
-    start = i;
-    i = spec.find_first_of(FMT_SIZES, start);
-    if (i != npos)
-    {
-        start = i;
-        if (spec[i] == 'I')
-            i = spec.find_first_not_of("6432", start);
-        else
-            i = spec.find_first_not_of(FMT_SIZES, start);
-
-        fmtspec.length_mod = spec.substr(start, i - start);
-    }
-
-    // conversion spec
-    i = spec.find_first_of(FMT_TYPES, start);
-    if (i != npos)
-        fmtspec.conversion = spec.at(i);
-
-    return fmtspec;
 }

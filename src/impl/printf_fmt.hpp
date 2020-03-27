@@ -29,4 +29,20 @@ namespace red::polyloc
     };
 
     using fmt_tokenizer = tokenizer<printf_fmt_separator, printf_fmt_separator::iterator>;
+
+    // %[flags][width][.precision][size]type
+    // worst case scenerio sizes:
+    // 1 + 4  +  10 +  1 +  10  +   3  + 1 = 30
+    // 10 is from INT_MAX
+    struct fmtspec_t
+    {
+        red::string_view fmt;
+        red::string_view flags, length_mod;
+        int field_width = -1, precision = -1;
+        char conversion = '\030';
+
+        static const int VAL_VA, VAL_AUTO = -1;
+    };
+
+    fmtspec_t parsefmt(string_view fmt, std::locale const& locale);
 }
