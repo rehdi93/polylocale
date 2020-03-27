@@ -365,3 +365,20 @@ TEST_CASE("string to PI", "[pi][strtod]")
     }
 
 }
+
+#include "impl/printf_fmt.hpp"
+
+using namespace std::literals;
+
+TEST_CASE("printf tokenizer", "[token][.]")
+{
+    using red::polyloc::fmt_tokenizer;
+    using std::cout; using std::quoted;
+
+    auto input = "o rato roeu %c roupa do rei de roma %10.5d:%10.5d %o69%x %X lorem ipsum %.2d %.1d%% %"s;
+    fmt_tokenizer tok(input);
+
+    for (fmt_tokenizer::iterator beg = tok.begin(); beg != tok.end(); ++beg) {
+        cout << quoted(*beg) << "\n";
+    }
+}
