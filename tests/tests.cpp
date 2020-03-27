@@ -133,7 +133,7 @@ sprintf_test_result do_test_sprintf(std::string expected, char* buf, size_t coun
     };
 }
 
-#define FMT_TEST_BASE(expected_, fmt, buffer, count, locp, ...) SECTION(#fmt " --> " #expected_) { \
+#define FMT_TEST_BASE(expected_, fmt, buffer, count, locp, ...) SECTION(#fmt ", " #__VA_ARGS__ " --> " #expected_) { \
     auto tr = do_test_sprintf(expected_, buffer, count, fmt, locp, __VA_ARGS__); \
     CAPTURE(tr.returnValue, tr.expected.size()); \
     REQUIRE(tr.expected == tr.result); }

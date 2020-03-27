@@ -10,14 +10,14 @@ namespace red::polyloc
     bool isfmtsize(char ch);
     bool isfmtchar(char ch, bool digits = true);
 
-    template <class TokFunc=boost::char_separator<char>, class It=std::string::const_iterator, class Type=std::string>
-    struct tokenizer : boost::tokenizer<TokFunc, It, Type>
-    {
-        using function = TokFunc;
-        using boost::tokenizer<TokFunc, It, Type>::tokenizer;
-    };
+    //template <class TokFunc=boost::char_separator<char>, class It=std::string::const_iterator, class Type=std::string>
+    //struct tokenizer : boost::tokenizer<TokFunc, It, Type>
+    //{
+    //    using function = TokFunc;
+    //    using boost::tokenizer<TokFunc, It, Type>::tokenizer;
+    //};
 
-    struct printf_fmt_separator
+    struct fmt_separator
     {
         using iterator = std::string::const_iterator;
 
@@ -28,12 +28,9 @@ namespace red::polyloc
         bool m_infmt = false;
     };
 
-    using fmt_tokenizer = tokenizer<printf_fmt_separator, printf_fmt_separator::iterator>;
+    using fmt_tokenizer = boost::tokenizer<fmt_separator, fmt_separator::iterator>;
 
     // %[flags][width][.precision][size]type
-    // worst case scenerio sizes:
-    // 1 + 4  +  10 +  1 +  10  +   3  + 1 = 30
-    // 10 is from INT_MAX
     struct fmtspec_t
     {
         red::string_view fmt;
