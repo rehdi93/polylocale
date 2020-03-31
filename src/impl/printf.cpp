@@ -261,11 +261,11 @@ struct printf_arg
             // integer args w/o size spec are treated as 32bit
         common_uint:
             if (bitmask::has(aflags, arg_flags::wide)) {
-                uint64_t num = va_arg(*va, uint64_t);
+                auto num = va_arg(*va, uint64_t);
                 put_int(outs, num);
             }
             else {
-                uint32_t num = va_arg(*va, uint32_t);
+                auto num = va_arg(*va, uint32_t);
                 put_int(outs, num);
             }
             break;

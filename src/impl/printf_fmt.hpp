@@ -10,13 +10,6 @@ namespace red::polyloc
     bool isfmtsize(char ch);
     bool isfmtchar(char ch, bool digits = true);
 
-    //template <class TokFunc=boost::char_separator<char>, class It=std::string::const_iterator, class Type=std::string>
-    //struct tokenizer : boost::tokenizer<TokFunc, It, Type>
-    //{
-    //    using function = TokFunc;
-    //    using boost::tokenizer<TokFunc, It, Type>::tokenizer;
-    //};
-
     struct fmt_separator
     {
         using iterator = std::string::const_iterator;
