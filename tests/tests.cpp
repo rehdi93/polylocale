@@ -8,9 +8,21 @@
 
 #include "polylocale.h"
 #include "boost/utility/string_view.hpp"
-#define CATCH_CONFIG_MAIN
+#define CATCH_CONFIG_RUNNER
 #include "catch.hpp"
 
+int main(int argc, char* argv[]) {
+    // global setup...
+#ifdef WIN32
+    system("chcp 65001");
+#endif // WIN32
+
+    int result = Catch::Session().run(argc, argv);
+
+    // global clean-up...
+
+    return result;
+}
 
 using boost::string_view;
 
@@ -366,9 +378,36 @@ TEST_CASE("string to PI", "[pi][strtod]")
 
 }
 
-#include "impl/printf_fmt.hpp"
-
 using namespace std::literals;
+
+TEST_CASE("Wide strings", "[wide]")
+{
+    auto locname = "en_US.utf8";
+    INFO("[!] this test requires '"<<locname<<"' locale");
+
+    auto loc = locale_ptr(poly_newlocale(POLY_ALL_MASK, locname, NULL));
+    char_buffer<128> buffer;
+    int ret;
+
+    SECTION("%S") {
+        auto expected = u8"%S: áéíóú"s;
+        ret = poly_snprintf_l(buffer, 128, "%%S: %S", loc.get(), L"áéíóú");
+        string_view result = buffer;
+        CAPTURE(ret);
+        REQUIRE(expected == result);
+    }
+    SECTION("%ls") {
+        auto expected = u8"%ls: áéíóú"s;
+        ret = poly_snprintf_l(buffer, 128, "%%ls: %ls", loc.get(), L"áéíóú");
+        string_view result = buffer;
+        CAPTURE(ret);
+        REQUIRE(expected == result);
+    }
+
+}
+
+
+#include "impl/printf_fmt.hpp"
 
 TEST_CASE("printf tokenizer", "[token][.]")
 {

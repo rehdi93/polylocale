@@ -52,6 +52,9 @@ private:
     boost::io::basic_ios_fill_saver<Ch, Tr> m_fillsaver;
 };
 
+using cvt_t = facet_adapter<std::codecvt_byname<wchar_t, char, std::mbstate_t>>;
+using wconverter = std::wstring_convert<cvt_t>;
+
 } // unnamed
 
 
@@ -70,14 +73,15 @@ enum class arg_flags : unsigned short
 
 struct printf_arg
 {
-    printf_arg(fmtspec_t fmts)
-    : fmtspec(fmts)
+    printf_arg(fmtspec_t fmts, wconverter& wsc)
+    : fmtspec(fmts), conv(wsc)
     {
     }
 
 
-    arg_flags aflags{};
     fmtspec_t fmtspec;
+    wconverter& conv;
+    arg_flags aflags{};
 
     // print value
     auto put(std::ostream& outs, va_list* va)
@@ -137,7 +141,7 @@ struct printf_arg
             // are we 64-bit (unix style)
             else if (fmtspec.length_mod == "l")
             {
-                if (sizeof(long) == 8)
+                if (sizeof(long) == 8 || fmtspec.conversion == 'c' || fmtspec.conversion == 's')
                     aflags |= arg_flags::wide;
             }
             else if (fmtspec.length_mod == "ll")
@@ -170,7 +174,7 @@ struct printf_arg
 
         switch (fmtspec.conversion)
         {
-        case 'C': // wide char TODO
+        case 'C': // wide char
             aflags |= arg_flags::wide;
         case 'c': // char
             if (bm::has(aflags, arg_flags::wide)) {
@@ -243,12 +247,15 @@ struct printf_arg
             outs << std::hex << va_arg(*va, void*);
             break;
 
-        case 'S': // wide string TODO
+        case 'S': // wide string
             aflags |= arg_flags::wide;
-            put_str(outs, va_arg(*va, wchar_t*));
-            break;
         case 's': // string
-            put_str(outs, va_arg(*va, char*));
+            if (bm::has(aflags, arg_flags::wide)) {
+                put_str(outs, va_arg(*va, wchar_t*));
+            }
+            else {
+                put_str(outs, va_arg(*va, char*));
+            }
             break;
 
         case 'n': // weird write-bytes specifier (not implemented)
@@ -296,13 +303,9 @@ private:
     }
 
     void put_str(std::ostream& os, red::wstring_view str) const {
-        using std::codecvt_byname; using std::wstring_convert;
-        using cvt = facet_adapter<codecvt_byname<wchar_t, char, std::mbstate_t>>;
 
         auto name = os.getloc().name();
-        wstring_convert<cvt> wsc{ new cvt(name) };
-        std::string tmp = wsc.to_bytes(str.data(), str.data()+str.size());
-        
+        std::string tmp = conv.to_bytes(str.data(), str.data() + str.size());
         put_str(os, tmp);
     }
 
@@ -375,6 +378,7 @@ int red::polyloc::do_printf(string_view fmt, std::ostream& outs, const std::loca
         return 0;
 
     outs.imbue(loc);
+    auto converter = wconverter(new cvt_t(loc.name()));
 
 #ifdef __GNUC__
     va_list va;
@@ -394,7 +398,7 @@ int red::polyloc::do_printf(string_view fmt, std::ostream& outs, const std::loca
         if (tok[0] == '%' && tok.size() >= 2)
         {
             auto fmtspec = parsefmt(tok, loc);
-            printf_arg pfarg{ fmtspec };
+            printf_arg pfarg{ fmtspec, converter };
             pfarg.put(outs, &va);
         }
         else
