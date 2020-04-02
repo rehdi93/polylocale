@@ -329,26 +329,22 @@ private:
             os << std::showbase;
         }
 
-        bool skip = false;
+        if (bm::has(aflags, arg_flags::blankpos) && val >= 0 && fmtspec.field_width < 2)
+            os.put(' ');
+
         if (fmtspec.precision >= 0 && val == 0)
         {
             if (bitmask::has_all(os.flags(), ios::oct | ios::showbase))
             {
                 // for octal, if both the converted value and the precision are ​0​, single ​0​ is written.
                 os << 0;
-                skip = true;
+                return;
             }
             else if (!bm::has(os.flags(), ios::showpos))
             {
-                skip = true;
+                return;
             }
         }
-
-        if (bm::has(aflags, arg_flags::blankpos) && val >= 0 && fmtspec.field_width < 2)
-            os.put(' ');
-
-        if (skip)
-            return;
 
         if (fmtspec.precision > 0)
         {
@@ -393,9 +389,7 @@ int red::polyloc::do_printf(string_view fmt, std::ostream& outs, const std::loca
 
     for (auto& tok : toknz)
     {
-        if (tok.empty()) continue;
-
-        if (tok[0] == '%' && tok.size() >= 2)
+        if (tok.size() >= 2 && tok[0] == '%')
         {
             auto fmtspec = parsefmt(tok, loc);
             printf_arg pfarg{ fmtspec, converter };

@@ -80,6 +80,23 @@ bool fmt_separator::operator() (iterator& next, iterator end, std::string& token
     auto start = next;
     if (start == end)
         return false;
+    
+    if (*start == FMT_START)
+    {
+        if (std::next(start) == end)
+            return false;
+
+        if (*std::next(start) == FMT_START) {
+            // escaped %
+            token.assign(1, FMT_START);
+            next += 2;
+            return true;
+        }
+        else {
+            // possible printf fmt
+            m_infmt = true;
+        }
+    }
 
     if (m_infmt)
     {
@@ -91,7 +108,7 @@ bool fmt_separator::operator() (iterator& next, iterator end, std::string& token
                 return true;
             }
             if (isfmtchar(l) && isfmttype(r)) {
-                offs++;
+                offs = 2;
                 return true;
             }
             return false;
@@ -102,27 +119,11 @@ bool fmt_separator::operator() (iterator& next, iterator end, std::string& token
 
         token.assign(start, next);
         m_infmt = false;
-        return true;
     }
-
-    next = find(start, end, FMT_START);
-    token.assign(start, next);
-
-    if (distance(next, end) >= 2)
+    else
     {
-        if (*std::next(next) == FMT_START) {
-            // escaped %
-            token += FMT_START;
-            next += 2;
-        }
-        else {
-            // possible printf fmt
-            m_infmt = true;
-        }
-    }
-    else if (next != end && std::next(next)==end)
-    {
-        next++;
+        next = find(start, end, FMT_START);
+        token.assign(start, next);
     }
 
     return true;
@@ -136,7 +137,7 @@ void fmt_separator::reset()
 fmtspec_t parsefmt(string_view spec, std::locale const& locale)
 {
     fmtspec_t fmtspec{ spec };
-    assert(spec[0] == FMT_START && spec.size() >= 2);
+    assert(spec.size() >= 2 && spec[0] == FMT_START);
 
     auto beg = spec.begin() + 1;
     const auto end_ = end(spec);

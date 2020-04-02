@@ -1,5 +1,5 @@
 /*
-    polylocale: polyfill for C *_l functions
+    polylocale: polyfill for C io functions taking a locale object
     
     by Pedro Oliva Rodrigues
 */
