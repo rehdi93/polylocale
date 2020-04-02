@@ -1,4 +1,5 @@
 ﻿#include "printf.hpp"
+#include "printf_fmt.hpp"
 #include "bitmask.hpp"
 #include "boost/io/ios_state.hpp"
 
@@ -12,6 +13,7 @@
 
 
 using std::ios;
+using red::polyloc::fmtspec_t;
 using namespace std::literals;
 using namespace bitmask::ops;
 namespace bm = bitmask;
@@ -19,72 +21,6 @@ namespace bm = bitmask;
 // HELPERS
 namespace
 {
-
-constexpr char FMT_START    = '%';
-constexpr char FMT_ALL[]    = "%.*" "-+ #0" "hljztI" "CcudioXxEeFfGgAapSsn" /*"123456789"*/ ;
-constexpr char FMT_FLAGS[]  = "-+ #0";
-constexpr char FMT_TYPES[]  = "CcudioXxEeFfGgAapSsn";
-constexpr char FMT_SIZES[]  = "hljztI";
-// precision
-constexpr char FMT_PRECISION = '.';
-// value from VA
-constexpr char FMT_FROM_VA = '*';
-
-
-bool isfmtc(char ch)
-{
-    using namespace std;
-
-    auto e = end(FMT_ALL);
-    return find(begin(FMT_ALL), e, ch) != e;
-}
-bool isfmt(char ch)
-{
-    using namespace std;
-    return isfmtc(ch) || isdigit(ch, locale::classic());
-}
-bool isfmttype(char ch)
-{
-    using namespace std;
-
-    auto e = end(FMT_TYPES);
-    return find(begin(FMT_TYPES), e, ch) != e;
-}
-bool isfmtflag(char ch)
-{
-    using namespace std;
-    auto e = end(FMT_FLAGS);
-    return find(begin(FMT_FLAGS), e, ch) != e;
-}
-
-
-/*
-    Tokenizes a single format spec. from 'line'.
-    - preconditions: line[0]==FMT_START
-
-    A printf format specifier start with a '%' and ends with a conversion spec.
-*/
-red::string_view fmt_tok(red::string_view line)
-{
-    // "%# +o| %#o" "%10.5d|:%10.5d"
-    using namespace std;
-
-    int offs = 1;
-    auto fmtIt = adjacent_find(begin(line)+1, end(line), [&](char l, char r) mutable {
-        if (isfmt(l) && isfmttype(r)) {
-            offs++;
-            return true;
-        }
-        if (isfmttype(l)) {
-            return true;
-        }
-        return false;
-    });
-    
-    auto count = fmtIt - begin(line) + offs;
-    auto tok = line.substr(0, count);
-    return tok;
-}
 
 struct va_deleter
 {
@@ -116,6 +52,9 @@ private:
     boost::io::basic_ios_fill_saver<Ch, Tr> m_fillsaver;
 };
 
+using cvt_t = facet_adapter<std::codecvt_byname<wchar_t, char, std::mbstate_t>>;
+using wconverter = std::wstring_convert<cvt_t>;
+
 } // unnamed
 
 
@@ -132,45 +71,17 @@ enum class arg_flags : unsigned short
 };
 
 
-// %[flags][width][.precision][size]type
-// worst case scenerio sizes:
-// 1 + 4  +  10 +  1 +  10  +   3  + 1 = 30
-// 10 is from INT_MAX
-struct fmtspec_t
-{
-    red::string_view fmt;
-    red::string_view flags, length_mod;
-    int field_width = -1, precision = -1;
-    char conversion = '\030';
-
-
-    bool valid() const
-    {
-        if (conversion == '\030')
-        {
-            return false;
-        }
-
-        auto end = std::end(FMT_TYPES);
-        auto it = std::find(std::begin(FMT_TYPES), end, conversion);
-        return it != end;
-    }
-
-    static const int VAL_VA = -(int)FMT_FROM_VA, VAL_AUTO = -1;
-};
-
-static fmtspec_t parsefmt(const std::string& str, std::locale const& locale);
-
 struct printf_arg
 {
-    printf_arg(fmtspec_t fmts)
-    : fmtspec(fmts)
+    printf_arg(fmtspec_t fmts, wconverter& wsc)
+    : fmtspec(fmts), conv(wsc)
     {
     }
 
 
-    arg_flags aflags{};
     fmtspec_t fmtspec;
+    wconverter& conv;
+    arg_flags aflags{};
 
     // print value
     auto put(std::ostream& outs, va_list* va)
@@ -230,7 +141,7 @@ struct printf_arg
             // are we 64-bit (unix style)
             else if (fmtspec.length_mod == "l")
             {
-                if (sizeof(long) == 8)
+                if (sizeof(long) == 8 || fmtspec.conversion == 'c' || fmtspec.conversion == 's')
                     aflags |= arg_flags::wide;
             }
             else if (fmtspec.length_mod == "ll")
@@ -263,7 +174,7 @@ struct printf_arg
 
         switch (fmtspec.conversion)
         {
-        case 'C': // wide char TODO
+        case 'C': // wide char
             aflags |= arg_flags::wide;
         case 'c': // char
             if (bm::has(aflags, arg_flags::wide)) {
@@ -336,12 +247,15 @@ struct printf_arg
             outs << std::hex << va_arg(*va, void*);
             break;
 
-        case 'S': // wide string TODO
+        case 'S': // wide string
             aflags |= arg_flags::wide;
-            put_str(outs, va_arg(*va, wchar_t*));
-            break;
         case 's': // string
-            put_str(outs, va_arg(*va, char*));
+            if (bm::has(aflags, arg_flags::wide)) {
+                put_str(outs, va_arg(*va, wchar_t*));
+            }
+            else {
+                put_str(outs, va_arg(*va, char*));
+            }
             break;
 
         case 'n': // weird write-bytes specifier (not implemented)
@@ -354,11 +268,11 @@ struct printf_arg
             // integer args w/o size spec are treated as 32bit
         common_uint:
             if (bitmask::has(aflags, arg_flags::wide)) {
-                uint64_t num = va_arg(*va, uint64_t);
+                auto num = va_arg(*va, uint64_t);
                 put_int(outs, num);
             }
             else {
-                uint32_t num = va_arg(*va, uint32_t);
+                auto num = va_arg(*va, uint32_t);
                 put_int(outs, num);
             }
             break;
@@ -389,13 +303,9 @@ private:
     }
 
     void put_str(std::ostream& os, red::wstring_view str) const {
-        using std::codecvt_byname; using std::wstring_convert;
-        using cvt = facet_adapter<codecvt_byname<wchar_t, char, std::mbstate_t>>;
 
         auto name = os.getloc().name();
-        wstring_convert<cvt> wsc{ new cvt(name) };
-        std::string tmp = wsc.to_bytes(str.data(), str.data()+str.size());
-        
+        std::string tmp = conv.to_bytes(str.data(), str.data() + str.size());
         put_str(os, tmp);
     }
 
@@ -419,26 +329,22 @@ private:
             os << std::showbase;
         }
 
-        bool skip = false;
+        if (bm::has(aflags, arg_flags::blankpos) && val >= 0 && fmtspec.field_width < 2)
+            os.put(' ');
+
         if (fmtspec.precision >= 0 && val == 0)
         {
             if (bitmask::has_all(os.flags(), ios::oct | ios::showbase))
             {
                 // for octal, if both the converted value and the precision are ​0​, single ​0​ is written.
                 os << 0;
-                skip = true;
+                return;
             }
             else if (!bm::has(os.flags(), ios::showpos))
             {
-                skip = true;
+                return;
             }
         }
-
-        if (bm::has(aflags, arg_flags::blankpos) && val >= 0 && fmtspec.field_width < 2)
-            os.put(' ');
-
-        if (skip)
-            return;
 
         if (fmtspec.precision > 0)
         {
@@ -468,10 +374,7 @@ int red::polyloc::do_printf(string_view fmt, std::ostream& outs, const std::loca
         return 0;
 
     outs.imbue(loc);
-
-    auto format = fmt;
-    std::string spec;
-    spec.reserve(30);
+    auto converter = wconverter(new cvt_t(loc.name()));
 
 #ifdef __GNUC__
     va_list va;
@@ -481,48 +384,24 @@ int red::polyloc::do_printf(string_view fmt, std::ostream& outs, const std::loca
     auto va = va_args;
 #endif // __GNUC__
 
-    for (size_t i;;)
+    auto format = std::string(fmt);
+    fmt_tokenizer toknz{ format };
+
+    for (auto& tok : toknz)
     {
-        // look for %
-        i = format.find(FMT_START);
-        
-        if (i == string_view::npos)
+        if (tok.size() >= 2 && tok[0] == '%')
         {
-            // no more specs, we're done
-            outs << format;
-            return outs.tellp();
-        }
-        else if (i+1 == format.size())
-        {
-            // format ends with a single '%'
-            return outs.tellp();
-        }
-
-        auto txtb4 = format.substr(0, i);
-
-        if (format[i + 1] == FMT_START)
-        {
-            // escaped %
-            outs << txtb4 << format[i + 1];
-            format.remove_prefix(txtb4.size()+2);
+            auto fmtspec = parsefmt(tok, loc);
+            printf_arg pfarg{ fmtspec, converter };
+            pfarg.put(outs, &va);
         }
         else
         {
-            outs << txtb4;
-
-            // possible fmtspec(s)
-            format.remove_prefix(i);
-            spec.assign(format, 0, 30);
-
-            auto fmtspec = parsefmt(spec, loc);
-            printf_arg arg{ fmtspec };
-
-            arg.put(outs, &va);
-
-
-            format.remove_prefix(arg.fmtspec.fmt.size());
+            outs << tok;
         }
     }
+
+    return outs.tellp();
 }
 
 auto red::polyloc::do_printf(string_view format, std::ostream& outs, size_t max, const std::locale& loc, va_list va) -> write_result
@@ -551,81 +430,4 @@ auto red::polyloc::do_printf(string_view format, std::ostream& outs, size_t max,
     }
 
     return ret;
-}
-
-
-fmtspec_t parsefmt(const std::string& str, std::locale const& locale)
-{
-    auto constexpr npos = std::string::npos;
-    using red::svtol;
-
-    fmtspec_t fmtspec;
-    fmtspec.fmt = fmt_tok(str);
-    auto spec = fmtspec.fmt;
-    assert(spec[0] == FMT_START && spec.size() >= 2);
-
-    size_t start=1, i=1;
-
-    // Flags
-    i = spec.find_first_not_of(FMT_FLAGS, start);
-    if (i != npos)
-    {
-        fmtspec.flags = spec.substr(1, i - start);
-    }
-    
-    // field width
-    if (spec[i] == FMT_FROM_VA)
-    {
-        fmtspec.field_width = fmtspec.VAL_VA;
-        i++;
-    }
-    else if (std::isdigit(spec[i], locale)) try
-    {
-        size_t converted;
-        fmtspec.field_width = svtol(spec.substr(i), &converted);
-        i += converted;
-    }
-    catch (const std::exception&) {
-        // no conversion took place
-    }
-
-    if (spec[i] == FMT_PRECISION)
-    {
-        i++;
-        if (spec[i] == FMT_FROM_VA)
-        {
-            fmtspec.precision = fmtspec.VAL_VA;
-            i++;
-        }
-        else if (std::isdigit(spec[i], locale)) try
-        {
-            size_t converted;
-            fmtspec.precision = svtol(spec.substr(i), &converted);
-            i += converted;
-        }
-        catch (const std::exception&) {
-            // no conversion took place
-        }
-    }
-
-    // size overrides
-    start = i;
-    i = spec.find_first_of(FMT_SIZES, start);
-    if (i != npos)
-    {
-        start = i;
-        if (spec[i] == 'I')
-            i = spec.find_first_not_of("6432", start);
-        else
-            i = spec.find_first_not_of(FMT_SIZES, start);
-
-        fmtspec.length_mod = spec.substr(start, i - start);
-    }
-
-    // conversion spec
-    i = spec.find_first_of(FMT_TYPES, start);
-    if (i != npos)
-        fmtspec.conversion = spec.at(i);
-
-    return fmtspec;
 }

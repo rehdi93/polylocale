@@ -8,9 +8,21 @@
 
 #include "polylocale.h"
 #include "boost/utility/string_view.hpp"
-#define CATCH_CONFIG_MAIN
+#define CATCH_CONFIG_RUNNER
 #include "catch.hpp"
 
+int main(int argc, char* argv[]) {
+    // global setup...
+#ifdef WIN32
+    system("chcp 65001");
+#endif // WIN32
+
+    int result = Catch::Session().run(argc, argv);
+
+    // global clean-up...
+
+    return result;
+}
 
 using boost::string_view;
 
@@ -133,7 +145,7 @@ sprintf_test_result do_test_sprintf(std::string expected, char* buf, size_t coun
     };
 }
 
-#define FMT_TEST_BASE(expected_, fmt, buffer, count, locp, ...) SECTION(#fmt " --> " #expected_) { \
+#define FMT_TEST_BASE(expected_, fmt, buffer, count, locp, ...) SECTION(#fmt ", " #__VA_ARGS__ " --> " #expected_) { \
     auto tr = do_test_sprintf(expected_, buffer, count, fmt, locp, __VA_ARGS__); \
     CAPTURE(tr.returnValue, tr.expected.size()); \
     REQUIRE(tr.expected == tr.result); }
@@ -364,4 +376,48 @@ TEST_CASE("string to PI", "[pi][strtod]")
         REQUIRE(result == PI);
     }
 
+}
+
+using namespace std::literals;
+
+TEST_CASE("Wide strings", "[wide]")
+{
+    auto locname = "en_US.utf8";
+    INFO("[!] this test requires '"<<locname<<"' locale");
+
+    auto loc = locale_ptr(poly_newlocale(POLY_ALL_MASK, locname, NULL));
+    char_buffer<128> buffer;
+    int ret;
+
+    SECTION("%S") {
+        auto expected = u8"%S: áéíóú"s;
+        ret = poly_snprintf_l(buffer, 128, "%%S: %S", loc.get(), L"áéíóú");
+        string_view result = buffer;
+        CAPTURE(ret);
+        REQUIRE(expected == result);
+    }
+    SECTION("%ls") {
+        auto expected = u8"%ls: áéíóú"s;
+        ret = poly_snprintf_l(buffer, 128, "%%ls: %ls", loc.get(), L"áéíóú");
+        string_view result = buffer;
+        CAPTURE(ret);
+        REQUIRE(expected == result);
+    }
+
+}
+
+
+#include "impl/printf_fmt.hpp"
+
+TEST_CASE("printf tokenizer", "[token][.]")
+{
+    using red::polyloc::fmt_tokenizer;
+    using std::cout; using std::quoted;
+
+    auto input = "o rato roeu %c roupa do rei de roma %10.5d:%10.5d %o69%x %X lorem ipsum %.2d %.1d%% %"s;
+    fmt_tokenizer tok(input);
+
+    for (fmt_tokenizer::iterator beg = tok.begin(); beg != tok.end(); ++beg) {
+        cout << quoted(*beg) << "\n";
+    }
 }

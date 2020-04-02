@@ -1,7 +1,7 @@
 ﻿# src
 add_library(polylocale 
 	polylocale.cpp polylocale.h
-	impl/printf.cpp impl/printf.hpp)
+	impl/printf.cpp impl/printf.hpp "impl/fmt.cpp")
 target_compile_features(polylocale PUBLIC cxx_std_17)
 
 configure_file(config.h.in config.h)
