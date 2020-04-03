@@ -1,6 +1,7 @@
 #include <locale>
 #include <sstream>
 #include <fstream>
+#include <iostream>
 #include <cstdio>
 #include <string>
 #include <memory>
@@ -22,7 +23,6 @@ struct poly_locale
     std::locale loc;
     std::string name;
 };
-
 
 
 static auto make_polylocale(std::locale const& base) {
@@ -161,7 +161,6 @@ double poly_strtod_l(const char* str, char** endptr, poly_locale_t ploc)
     return num;
 }
 
-using red::io::array_buf;
 
 int poly_printf_l(const char* fmt, poly_locale_t locale, ...)
 {
@@ -222,7 +221,7 @@ int poly_snprintf_l(char* buffer, size_t count, const char* format, poly_locale_
 
 int poly_vsnprintf_l(char* buffer, size_t count, const char* fmt, poly_locale_t ploc, va_list args)
 {
-    array_buf outputBuf (buffer, count);
+    red::io::array_buf outputBuf (buffer, count);
     std::ostream outs(&outputBuf);
 
     auto result = red::polyloc::do_printf(fmt, outs, count, getloc(ploc), args);

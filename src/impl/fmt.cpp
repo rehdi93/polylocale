@@ -31,7 +31,6 @@ red::string_view ittosv(red::string_view::iterator b, red::string_view::iterator
 
 using std::begin; using std::end;
 using std::find;
-using std::locale;
 
 bool red::polyloc::isfmtflag(char ch, bool zero, bool space)
 {
@@ -66,7 +65,7 @@ bool red::polyloc::isfmtchar(char ch, bool digits)
 {
     return ch == FMT_PRECISION || ch == FMT_FROM_VA ||
         isfmtflag(ch, false) || isfmtsize(ch) || isfmttype(ch)
-        || (digits && isdigit(ch, locale::classic()));
+        || (digits && isdigit(ch, std::locale::classic()));
 }
 
 

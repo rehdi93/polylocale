@@ -11,7 +11,6 @@
 #include <cmath>
 #include <codecvt>
 
-
 using std::ios;
 using red::polyloc::fmtspec_t;
 using namespace std::literals;
@@ -39,6 +38,9 @@ struct facet_adapter : Facet
     ~facet_adapter() {}
 };
 
+using cvt_t = facet_adapter<std::codecvt_byname<wchar_t, char, std::mbstate_t>>;
+using wconverter = std::wstring_convert<cvt_t>;
+
 template<class Ch, class Tr = std::char_traits<Ch>>
 struct basic_ios_saver
 {
@@ -47,13 +49,15 @@ struct basic_ios_saver
     explicit basic_ios_saver(state_type& s) : m_wpfsaver(s), m_fillsaver(s)
     {}
 
+    void restore() {
+        m_wpfsaver.restore();
+        m_fillsaver.restore();
+    }
+
 private:
     boost::io::ios_base_all_saver m_wpfsaver;
     boost::io::basic_ios_fill_saver<Ch, Tr> m_fillsaver;
 };
-
-using cvt_t = facet_adapter<std::codecvt_byname<wchar_t, char, std::mbstate_t>>;
-using wconverter = std::wstring_convert<cvt_t>;
 
 } // unnamed
 
@@ -88,89 +92,9 @@ struct printf_arg
     {
         basic_ios_saver<char> _g_(outs);
 
-        for (auto f : fmtspec.flags)
-        {
-            switch (f)
-            {
-            case '-': // left justify
-                outs << std::left;
-                break;
-            case '+': // show positive sign
-                outs << std::showpos;
-                break;
-            case ' ': // Use a blank to prefix the output value if it is signed and positive, 
-                aflags |= arg_flags::blankpos;
-                break;
-            case '#':
-                aflags |= arg_flags::altform;
-                break;
-            case '0':
-                outs.fill('0');
-                break;
-            default:
-                break;
-            }
-        }
-
-        // ' ' has no effect if '+' is set
-        if (bm::has(outs.flags(), ios::showpos))
-        {
-            aflags &= ~arg_flags::blankpos;
-        }
-
-        if (fmtspec.field_width == fmtspec.VAL_VA)
-            fmtspec.field_width = va_arg(*va, int);
-
-        if (fmtspec.precision == fmtspec.VAL_VA)
-            fmtspec.precision = va_arg(*va, int);
-
-        outs.width(fmtspec.field_width > 0 ? fmtspec.field_width : 0);
-        outs.precision(fmtspec.precision > 0 ? fmtspec.precision : 0);
-
-        if (!fmtspec.length_mod.empty())
-        {
-            if (fmtspec.length_mod == "h")
-            {
-                // halfwidth
-                aflags |= arg_flags::narrow;
-            }
-            else if (fmtspec.length_mod == "hh")
-            {
-                // quarterwidth
-            }
-            // are we 64-bit (unix style)
-            else if (fmtspec.length_mod == "l")
-            {
-                if (sizeof(long) == 8 || fmtspec.conversion == 'c' || fmtspec.conversion == 's')
-                    aflags |= arg_flags::wide;
-            }
-            else if (fmtspec.length_mod == "ll")
-            {
-                aflags |= arg_flags::wide;
-            }
-            // are we 64-bit on intmax_t? (c99)
-            else if (fmtspec.length_mod == "j")
-            {
-                if (sizeof(size_t) == 8)
-                    aflags |= arg_flags::wide;
-            }
-            // are we 64-bit on size_t or ptrdiff_t? (c99)
-            else if (fmtspec.length_mod == "z" || fmtspec.length_mod == "t")
-            {
-                if (sizeof(ptrdiff_t) == 8)
-                    aflags |= arg_flags::wide;
-            }
-            // are we 64-bit (msft style)
-            else if (fmtspec.length_mod == "I64")
-            {
-                aflags |= arg_flags::wide;
-            }
-            else if (fmtspec.length_mod == "I32")
-            {
-                if (sizeof(void*) == 8)
-                    aflags |= arg_flags::wide;
-            }
-        }
+        apply_flags(outs);
+        apply_fwpr(outs, va);
+        apply_len();
 
         switch (fmtspec.conversion)
         {
@@ -364,6 +288,99 @@ private:
         os << val;
     }
 
+    void apply_flags(std::ostream& outs)
+    {
+        for (auto f : fmtspec.flags)
+        {
+            switch (f)
+            {
+            case '-': // left justify
+                outs << std::left;
+                break;
+            case '+': // show positive sign
+                outs << std::showpos;
+                break;
+            case ' ': // Use a blank to prefix the output value if it is signed and positive, 
+                aflags |= arg_flags::blankpos;
+                break;
+            case '#':
+                aflags |= arg_flags::altform;
+                break;
+            case '0':
+                outs.fill('0');
+                break;
+            default:
+                break;
+            }
+        }
+
+        // ' ' has no effect if '+' is set
+        if (bm::has(outs.flags(), ios::showpos))
+        {
+            aflags &= ~arg_flags::blankpos;
+        }
+    }
+
+    // field width, precision
+    void apply_fwpr(std::ostream& outs, va_list* va)
+    {
+        if (fmtspec.field_width == fmtspec.VAL_VA)
+            fmtspec.field_width = va_arg(*va, int);
+
+        if (fmtspec.precision == fmtspec.VAL_VA)
+            fmtspec.precision = va_arg(*va, int);
+
+        outs.width(fmtspec.field_width > 0 ? fmtspec.field_width : 0);
+        outs.precision(fmtspec.precision > 0 ? fmtspec.precision : 0);
+    }
+
+    void apply_len() noexcept
+    {
+        if (!fmtspec.length_mod.empty())
+        {
+            if (fmtspec.length_mod == "h")
+            {
+                // halfwidth
+                aflags |= arg_flags::narrow;
+            }
+            else if (fmtspec.length_mod == "hh")
+            {
+                // quarterwidth
+            }
+            // are we 64-bit (unix style)
+            else if (fmtspec.length_mod == "l")
+            {
+                if (sizeof(long) == 8 || fmtspec.conversion == 'c' || fmtspec.conversion == 's')
+                    aflags |= arg_flags::wide;
+            }
+            else if (fmtspec.length_mod == "ll")
+            {
+                aflags |= arg_flags::wide;
+            }
+            // are we 64-bit on intmax_t? (c99)
+            else if (fmtspec.length_mod == "j")
+            {
+                if (sizeof(size_t) == 8)
+                    aflags |= arg_flags::wide;
+            }
+            // are we 64-bit on size_t or ptrdiff_t? (c99)
+            else if (fmtspec.length_mod == "z" || fmtspec.length_mod == "t")
+            {
+                if (sizeof(ptrdiff_t) == 8)
+                    aflags |= arg_flags::wide;
+            }
+            // are we 64-bit (msft style)
+            else if (fmtspec.length_mod == "I64")
+            {
+                aflags |= arg_flags::wide;
+            }
+            else if (fmtspec.length_mod == "I32")
+            {
+                if (sizeof(void*) == 8)
+                    aflags |= arg_flags::wide;
+            }
+        }
+    }
 };
 
 
