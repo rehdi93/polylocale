@@ -20,13 +20,6 @@ constexpr char FMT_PRECISION = '.';
 // value from VA
 constexpr char FMT_FROM_VA = '*';
 
-
-red::string_view ittosv(red::string_view::iterator b, red::string_view::iterator e) noexcept
-{
-    auto pb = std::addressof(*b); auto pe = std::addressof(*e);
-    return { pb, size_t(pe - pb) };
-}
-
 } // unnamed namespace
 
 using std::begin; using std::end;
@@ -133,80 +126,79 @@ void fmt_separator::reset()
     m_infmt = false;
 }
 
-fmtspec_t parsefmt(string_view spec, std::locale const& locale)
+
+fmtspec_t parsefmt(red::string_view spec, std::locale const& locale)
 {
+    constexpr auto npos = red::string_view::npos;
     fmtspec_t fmtspec{ spec };
     assert(spec.size() >= 2 && spec[0] == FMT_START);
 
-    auto beg = spec.begin() + 1;
-    const auto end_ = end(spec);
-    auto pos = beg;
+    size_t pos = 1;
 
     // Flags
-    auto it = find_if_not(beg, end_, [](char ch) { return isfmtflag(ch); });
-    if (it != end_)
+    auto i = spec.find_first_not_of(FMT_FLAGS, 1);
+    if (i != npos)
     {
-        fmtspec.flags = ittosv(beg, it);
-        pos = it;
+        fmtspec.flags = spec.substr(1, i-1);
+        pos = i;
     }
 
     // field width
-    if (*pos == FMT_FROM_VA)
+    if (spec[pos] == FMT_FROM_VA)
     {
         fmtspec.field_width = -(int)FMT_FROM_VA;
         pos++;
     }
-    else if (isdigit(*pos, locale)) try
+    else if (isdigit(spec[pos], locale)) try
     {
         size_t converted;
-        fmtspec.field_width = svtol(spec.substr(pos-beg+1), &converted);
+        fmtspec.field_width = svtol(spec.substr(pos), &converted);
         pos += converted;
     }
-    catch (const std::exception&)
-    {
+    catch (const std::exception&) {
         // no conversion took place
     }
 
     // precision
-    if (*pos == FMT_PRECISION)
+    if (spec[pos] == FMT_PRECISION)
     {
         pos++;
-        if (*pos == FMT_FROM_VA)
+        if (spec[pos] == FMT_FROM_VA)
         {
             fmtspec.precision = -(int)FMT_FROM_VA;
             pos++;
         }
-        else if (isdigit(*pos, locale)) try
+        else if (isdigit(spec[pos], locale)) try
         {
             size_t converted;
-            fmtspec.precision = svtol(spec.substr(pos - beg + 1), &converted);
+            fmtspec.precision = svtol(spec.substr(pos), &converted);
             pos += converted;
         }
         catch (const std::exception&) {
             // no conversion took place
         }
     }
-
+    
     // size overrides
-    it = find_if(pos, end_, isfmtsize);
-    if (it != end_)
+    i = spec.find_first_of(FMT_SIZES, pos);
+    if (i != npos)
     {
-        pos = it;
-        if (*pos == 'I') {
-            char sfix[] = "6432";
-            it = find_first_of(pos, end_, begin(sfix), end(sfix), std::not_equal_to<>{});
+        pos = i;
+        if (spec[pos] == 'I') {
+            i = spec.find_first_not_of("6432", pos);
         }
         else {
-            it = find_if_not(pos, end_, isfmtsize);
+            i = spec.find_first_not_of(FMT_SIZES, pos);
         }
-
-        fmtspec.length_mod = ittosv(pos, it);
+        
+        fmtspec.length_mod = spec.substr(pos, i - pos);
+        pos = i;
     }
 
     // conversion spec
-    it = find_if(pos, end_, isfmttype);
-    if (it != end_)
-        fmtspec.conversion = *it;
+    i = spec.find_first_of(FMT_TYPES, pos);
+    if (i != npos)
+        fmtspec.conversion = spec.at(i);
 
     return fmtspec;
 }
