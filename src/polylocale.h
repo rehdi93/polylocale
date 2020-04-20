@@ -24,6 +24,7 @@ typedef struct poly_locale* poly_locale_t;
 poly_locale_t poly_newlocale(int category_mask, const char* localename, poly_locale_t base);
 void poly_freelocale(poly_locale_t loc);
 poly_locale_t poly_duplocale(poly_locale_t loc);
+poly_locale_t poly_uselocale(poly_locale_t nloc);
 
 // deserialization
 double poly_strtod_l(const char* str, char** endptr, poly_locale_t loc);

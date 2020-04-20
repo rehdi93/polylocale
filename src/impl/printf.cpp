@@ -227,8 +227,6 @@ private:
     }
 
     void put_str(std::ostream& os, red::wstring_view str) const {
-
-        auto name = os.getloc().name();
         std::string tmp = conv.to_bytes(str.data(), str.data() + str.size());
         put_str(os, tmp);
     }
@@ -384,8 +382,12 @@ private:
 };
 
 
+int red::polyloc::do_printf(string_view format, std::ostream& outs, va_list args)
+{
+    return do_printf(format, outs, std::locale(), args);
+}
 
-int red::polyloc::do_printf(string_view fmt, std::ostream& outs, const std::locale& loc, va_list va_args)
+int red::polyloc::do_printf(string_view fmt, std::ostream& outs, const std::locale& loc, va_list args)
 {
     if (fmt.empty())
         return 0;
@@ -395,10 +397,10 @@ int red::polyloc::do_printf(string_view fmt, std::ostream& outs, const std::loca
 
 #ifdef __GNUC__
     va_list va;
-    va_copy(va, va_args);
+    va_copy(va, args);
     auto _g_ = std::unique_ptr<va_list, va_deleter>(&va);
 #else
-    auto va = va_args;
+    auto va = args;
 #endif // __GNUC__
 
     auto format = std::string(fmt);
@@ -421,30 +423,36 @@ int red::polyloc::do_printf(string_view fmt, std::ostream& outs, const std::loca
     return outs.tellp();
 }
 
-auto red::polyloc::do_printf(string_view format, std::ostream& outs, size_t max, const std::locale& loc, va_list va) -> write_result
+
+auto red::polyloc::do_printf(string_view format, std::ostream& outs, size_t max, const std::locale& loc, va_list va) -> std::pair<int, int>
 {
-    write_result ret;
+    std::pair<int, int> ret;
 
     std::ostringstream tmp;
     do_printf(format, tmp, loc, va);
     auto tmpstr = tmp.str();
-    ret.chars_needed = tmpstr.size();
+    ret.first = tmpstr.size();
 
     if (max == 0)
     {
-        ret.chars_written = 0;
+        ret.second = 0;
     }
-    else if (ret.chars_needed < max)
+    else if (ret.first < max)
     {
-        ret.chars_written = ret.chars_needed;
+        ret.second = ret.first;
         outs << tmpstr;
     }
     else
     {
         auto to_be_writen = string_view(tmpstr).substr(0, max - 1);
-        ret.chars_written = to_be_writen.size();
+        ret.second = to_be_writen.size();
         outs << to_be_writen;
     }
 
     return ret;
+}
+
+auto red::polyloc::do_printf(string_view format, std::ostream& outs, size_t max, va_list args) -> std::pair<int, int>
+{
+    return do_printf(format, outs, max, std::locale{}, args);
 }

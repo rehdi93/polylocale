@@ -57,7 +57,7 @@ bool red::polyloc::isfmtsize(char ch)
 bool red::polyloc::isfmtchar(char ch, bool digits)
 {
     return ch == FMT_PRECISION || ch == FMT_FROM_VA ||
-        isfmtflag(ch, false) || isfmtsize(ch) || isfmttype(ch)
+        isfmtflag(ch, digits) || isfmtsize(ch) || isfmttype(ch)
         || (digits && isdigit(ch, std::locale::classic()));
 }
 

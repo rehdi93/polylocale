@@ -24,6 +24,9 @@ struct poly_locale
     std::string name;
 };
 
+constexpr red::string_view TLL_UNSET = "__unset";
+thread_local poly_locale tl_locale = { std::locale::classic(), std::string(TLL_UNSET) };
+
 
 static auto make_polylocale(std::locale const& base) {
     auto plc = std::make_unique<poly_locale>(poly_locale{ base, base.name() });
@@ -137,6 +140,19 @@ poly_locale_t poly_duplocale(poly_locale_t loc)
     }
 }
 
+poly_locale_t poly_uselocale(poly_locale_t nloc)
+{
+    if (!nloc)
+    {
+        return tl_locale.name == TLL_UNSET ? POLY_GLOBAL_LOCALE : &tl_locale;
+    }
+
+    if (nloc == POLY_GLOBAL_LOCALE)
+    {
+        tl_locale.name = TLL_UNSET;
+    }
+}
+
 // ---
 
 double poly_strtod_l(const char* str, char** endptr, poly_locale_t ploc)
@@ -227,7 +243,7 @@ int poly_vsnprintf_l(char* buffer, size_t count, const char* fmt, poly_locale_t 
     auto result = red::polyloc::do_printf(fmt, outs, count, getloc(ploc), args);
     outs.put('\0');
 
-    return result.chars_needed;
+    return result.first;
 }
 
 
