@@ -1,21 +1,33 @@
-﻿#include "printf.hpp"
+﻿// disable deprication warning about wstring_convert
+/*
+  I could use a 3rd-party lib like Boost.Locale, but those usualy accept only a subset of locale
+  names like "en_US", "pt_BR.UTF-8"... OR they don't know the fact that MSVC now supports
+  utf8 locales https://github.com/MicrosoftDocs/cpp-docs/issues/1469
+*/
+
+// MSVC
+#define _SILENCE_CXX17_CODECVT_HEADER_DEPRECATION_WARNING
+
+#include "printf.hpp"
 #include "printf_fmt.hpp"
 #include "bitmask.hpp"
-#include "boost/io/ios_state.hpp"
+#include <boost/io/ios_state.hpp>
 
 #include <sstream>
 #include <iomanip>
-#include <cstddef>
-#include <algorithm>
-#include <cassert>
-#include <cmath>
 #include <codecvt>
+#include <algorithm>
+#include <optional>
+#include <cstddef>
+#include <cmath>
+#include <cassert>
+
 
 using std::ios;
 using red::polyloc::fmtspec_t;
+namespace bm = bitmask;
 using namespace std::literals;
 using namespace bitmask::ops;
-namespace bm = bitmask;
 
 // HELPERS
 namespace
@@ -35,18 +47,18 @@ template<class Facet>
 struct facet_adapter : Facet
 {
     using Facet::Facet; // inherit constructors
-    ~facet_adapter() {}
+    ~facet_adapter() = default;
 };
 
 using cvt_t = facet_adapter<std::codecvt_byname<wchar_t, char, std::mbstate_t>>;
 using wconverter = std::wstring_convert<cvt_t>;
 
 template<class Ch, class Tr = std::char_traits<Ch>>
-struct basic_ios_saver
+struct ios_saver
 {
     using state_type = std::basic_ios<Ch, Tr>;
 
-    explicit basic_ios_saver(state_type& s) : m_wpfsaver(s), m_fillsaver(s)
+    explicit ios_saver(state_type& s) : m_wpfsaver(s), m_fillsaver(s)
     {}
 
     void restore() {
@@ -75,22 +87,22 @@ enum class arg_flags : unsigned short
 };
 
 
-struct printf_arg
+struct arg_printer
 {
-    printf_arg(fmtspec_t fmts, wconverter& wsc)
-    : fmtspec(fmts), conv(wsc)
+    arg_printer(fmtspec_t fmts, std::optional<wconverter>& wcvt)
+    : fmtspec(fmts), conv(wcvt)
     {
     }
 
 
     fmtspec_t fmtspec;
-    wconverter& conv;
+    std::optional<wconverter>& conv;
     arg_flags aflags{};
 
     // print value
     auto put(std::ostream& outs, va_list* va)
     {
-        basic_ios_saver<char> _g_(outs);
+        ios_saver<char> _g_(outs);
 
         apply_flags(outs);
         apply_fwpr(outs, va);
@@ -205,6 +217,7 @@ struct printf_arg
 
 private:
 
+
     void put_fp(std::ostream& os, double number) const
     {
         if (bm::has(aflags, arg_flags::altform)) {
@@ -227,7 +240,10 @@ private:
     }
 
     void put_str(std::ostream& os, red::wstring_view str) const {
-        std::string tmp = conv.to_bytes(str.data(), str.data() + str.size());
+        if (!conv) {
+            conv.emplace(new cvt_t(os.getloc().name()));
+        }
+        std::string tmp = conv->to_bytes(str.data(), str.data() + str.size());
         put_str(os, tmp);
     }
 
@@ -239,7 +255,6 @@ private:
 
         os << str;
     }
-
 
     template<class I>
     using is_int = std::enable_if_t<std::is_integral<I>::value>;
@@ -393,7 +408,7 @@ int red::polyloc::do_printf(string_view fmt, std::ostream& outs, const std::loca
         return 0;
 
     outs.imbue(loc);
-    auto converter = wconverter(new cvt_t(loc.name()));
+    std::optional<wconverter> converter;
 
 #ifdef __GNUC__
     va_list va;
@@ -411,7 +426,7 @@ int red::polyloc::do_printf(string_view fmt, std::ostream& outs, const std::loca
         if (tok.size() >= 2 && tok[0] == '%')
         {
             auto fmtspec = parsefmt(tok, loc);
-            printf_arg pfarg{ fmtspec, converter };
+            arg_printer pfarg{ fmtspec, converter };
             pfarg.put(outs, &va);
         }
         else

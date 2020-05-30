@@ -150,7 +150,11 @@ poly_locale_t poly_uselocale(poly_locale_t nloc)
     if (nloc == POLY_GLOBAL_LOCALE)
     {
         tl_locale.name = TLL_UNSET;
+        return POLY_GLOBAL_LOCALE;
     }
+
+    tl_locale = *nloc;
+    return &tl_locale;
 }
 
 // ---

@@ -8,9 +8,7 @@ namespace bitmask
 //using is_bitmask = std::disjunction<std::is_integral<T>, std::is_enum<T>>;
 
 template<typename T>
-using identity = std::common_type<T>;
-template<typename T>
-using identity_t = typename identity<T>::type;
+using identity_t = std::common_type_t<T>;
 
 
 inline namespace ops
