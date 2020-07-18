@@ -11,9 +11,6 @@
 #include "impl/printf.hpp"
 #include "impl/polyimpl.h"
 
-#include "boost/iostreams/stream_buffer.hpp"
-#include "boost/iostreams/device/array.hpp"
-
 #ifdef __GNUC__
 #include <ext/stdio_filebuf.h>
 #endif

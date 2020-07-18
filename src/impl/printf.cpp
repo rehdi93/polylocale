@@ -71,9 +71,6 @@ private:
     boost::io::basic_ios_fill_saver<Ch, Tr> m_fillsaver;
 };
 
-} // unnamed
-
-
 enum class arg_flags : unsigned short
 {
     none,
@@ -89,23 +86,25 @@ enum class arg_flags : unsigned short
 
 struct arg_printer
 {
-    arg_printer(fmtspec_t fmts, std::optional<wconverter>& wcvt)
-    : fmtspec(fmts), conv(wcvt)
+    arg_printer(fmtspec_t fmts, std::ostream& os_, va_list* pva)
+    : fmtspec(fmts), os(os_), va(pva)
     {
     }
 
 
+    std::ostream& os;
+    va_list* va;
     fmtspec_t fmtspec;
-    std::optional<wconverter>& conv;
+    mutable std::optional<wconverter> conv;
     arg_flags aflags{};
 
     // print value
-    auto put(std::ostream& outs, va_list* va)
+    auto put()
     {
-        ios_saver<char> _g_(outs);
+        ios_saver<char> _g_(os);
 
-        apply_flags(outs);
-        apply_fwpr(outs, va);
+        apply_flags();
+        apply_fwpr();
         apply_len();
 
         switch (fmtspec.conversion)
@@ -116,88 +115,88 @@ struct arg_printer
             if (bm::has(aflags, arg_flags::wide)) {
                 auto v = va_arg(*va, wint_t);
                 wchar_t cp[1] = { (wchar_t)v };
-                put_str(outs, { cp, 1 });
+                put_str({ cp, 1 });
             }
             else {
                 auto v = va_arg(*va, int);
                 char cp[1] = { (char)v };
-                put_str(outs, { cp, 1 });
+                put_str({ cp, 1 });
             }
             break;
 
         case 'u': // Unsigned decimal integer
-            outs << std::dec;
+            os << std::dec;
             goto common_uint;
 
         case 'd': // Signed decimal integer
         case 'i':
-            outs << std::dec;
+            os << std::dec;
 
             if (bitmask::has(aflags, arg_flags::wide)) {
-                put_int(outs, va_arg(*va, int64_t));
+                put_int(va_arg(*va, int64_t));
             }
             else {
-                put_int(outs, va_arg(*va, int32_t));
+                put_int(va_arg(*va, int32_t));
             }
             break;
 
         case 'o': // Unsigned octal integer
-            outs << std::oct;
+            os << std::oct;
             goto common_uint;
 
         case 'X': // Unsigned hexadecimal integer w/ uppercase letters
-            outs.setf(ios::uppercase);
+            os.setf(ios::uppercase);
         case 'x': // Unsigned hexadecimal integer w/ lowercase letters
-            outs << std::hex;
+            os << std::hex;
             goto common_uint;
 
         case 'E': // float, scientific notation
-            outs.setf(ios::uppercase);
+            os.setf(ios::uppercase);
         case 'e':
-            outs << std::scientific;
-            put_fp(outs, va_arg(*va, double));
+            os << std::scientific;
+            put_fp(va_arg(*va, double));
             break;
 
         case 'F': // float, fixed notation
-            outs.setf(ios::uppercase);
+            os.setf(ios::uppercase);
         case 'f':
-            outs << std::fixed;
-            put_fp(outs, va_arg(*va, double));
+            os << std::fixed;
+            put_fp(va_arg(*va, double));
             break;
 
         case 'G': // float, general notation
-            outs.setf(ios::uppercase);
+            os.setf(ios::uppercase);
         case 'g':
-            outs << std::defaultfloat;
-            put_fp(outs, va_arg(*va, double));
+            os << std::defaultfloat;
+            put_fp(va_arg(*va, double));
             break;
 
         case 'A': // hex float
-            outs.setf(ios::uppercase);
+            os.setf(ios::uppercase);
         case 'a':
-            outs << std::hexfloat;
-            put_fp(outs, va_arg(*va, double));
+            os << std::hexfloat;
+            put_fp(va_arg(*va, double));
             break;
 
         case 'p': // pointer
-            outs << std::hex << va_arg(*va, void*);
+            os << std::hex << va_arg(*va, void*);
             break;
 
         case 'S': // wide string
             aflags |= arg_flags::wide;
         case 's': // string
             if (bm::has(aflags, arg_flags::wide)) {
-                put_str(outs, va_arg(*va, wchar_t*));
+                put_str(va_arg(*va, wchar_t*));
             }
             else {
-                put_str(outs, va_arg(*va, char*));
+                put_str(va_arg(*va, char*));
             }
             break;
 
         case 'n': // weird write-bytes specifier (not implemented)
         default:
             // invalid, print fmt as-is minus %
-            outs << fmtspec.fmt.substr(1);
+            os << fmtspec.fmt.substr(1);
             break;
 
             // https://docs.microsoft.com/en-us/cpp/c-runtime-library/format-specification-syntax-printf-and-wprintf-functions?view=vs-2019#argument-size-specification
@@ -205,11 +204,11 @@ struct arg_printer
         common_uint:
             if (bitmask::has(aflags, arg_flags::wide)) {
                 auto num = va_arg(*va, uint64_t);
-                put_int(outs, num);
+                put_int(num);
             }
             else {
                 auto num = va_arg(*va, uint32_t);
-                put_int(outs, num);
+                put_int(num);
             }
             break;
         }
@@ -217,8 +216,7 @@ struct arg_printer
 
 private:
 
-
-    void put_fp(std::ostream& os, double number) const
+    void put_fp(double number) const
     {
         if (bm::has(aflags, arg_flags::altform)) {
             os.setf(ios::showpoint);
@@ -239,15 +237,15 @@ private:
         os << number;
     }
 
-    void put_str(std::ostream& os, red::wstring_view str) const {
+    void put_str(red::wstring_view str) const {
         if (!conv) {
             conv.emplace(new cvt_t(os.getloc().name()));
         }
         std::string tmp = conv->to_bytes(str.data(), str.data() + str.size());
-        put_str(os, tmp);
+        put_str(tmp);
     }
 
-    void put_str(std::ostream& os, red::string_view str) const {
+    void put_str(red::string_view str) const {
         if (fmtspec.precision > 0)
         {
             str = str.substr(0, fmtspec.precision);
@@ -260,7 +258,7 @@ private:
     using is_int = std::enable_if_t<std::is_integral<I>::value>;
 
     template<typename T, class = is_int<T>>
-    void put_int(std::ostream& os, T val) const
+    void put_int(T val) const
     {
         if (bm::has(aflags, arg_flags::altform)) {
             os << std::showbase;
@@ -301,17 +299,17 @@ private:
         os << val;
     }
 
-    void apply_flags(std::ostream& outs)
+    void apply_flags()
     {
         for (auto f : fmtspec.flags)
         {
             switch (f)
             {
             case '-': // left justify
-                outs << std::left;
+                os << std::left;
                 break;
             case '+': // show positive sign
-                outs << std::showpos;
+                os << std::showpos;
                 break;
             case ' ': // Use a blank to prefix the output value if it is signed and positive, 
                 aflags |= arg_flags::blankpos;
@@ -320,7 +318,7 @@ private:
                 aflags |= arg_flags::altform;
                 break;
             case '0':
-                outs.fill('0');
+                os.fill('0');
                 break;
             default:
                 break;
@@ -328,14 +326,14 @@ private:
         }
 
         // ' ' has no effect if '+' is set
-        if (bm::has(outs.flags(), ios::showpos))
+        if (bm::has(os.flags(), ios::showpos))
         {
             aflags &= ~arg_flags::blankpos;
         }
     }
 
     // field width, precision
-    void apply_fwpr(std::ostream& outs, va_list* va)
+    void apply_fwpr()
     {
         if (fmtspec.field_width == fmtspec.VAL_VA)
             fmtspec.field_width = va_arg(*va, int);
@@ -343,8 +341,8 @@ private:
         if (fmtspec.precision == fmtspec.VAL_VA)
             fmtspec.precision = va_arg(*va, int);
 
-        outs.width(fmtspec.field_width > 0 ? fmtspec.field_width : 0);
-        outs.precision(fmtspec.precision > 0 ? fmtspec.precision : 0);
+        os.width(fmtspec.field_width > 0 ? fmtspec.field_width : 0);
+        os.precision(fmtspec.precision > 0 ? fmtspec.precision : 0);
     }
 
     void apply_len() noexcept
@@ -396,19 +394,23 @@ private:
     }
 };
 
+} // unnamed
 
-int red::polyloc::do_printf(string_view format, std::ostream& outs, va_list args)
+
+int red::polyloc::do_printf(string_view format, std::ostream& outs, const std::locale& loc, va_list args)
 {
-    return do_printf(format, outs, std::locale(), args);
+    auto oldloc = outs.imbue(loc);
+    int result = do_printf(format, outs, args);
+    outs.imbue(oldloc);
+    return result;
 }
 
-int red::polyloc::do_printf(string_view fmt, std::ostream& outs, const std::locale& loc, va_list args)
+int red::polyloc::do_printf(string_view fmt, std::ostream& outs, va_list args)
 {
     if (fmt.empty())
         return 0;
 
-    outs.imbue(loc);
-    std::optional<wconverter> converter;
+    auto loc = outs.getloc();
 
 #ifdef __GNUC__
     va_list va;
@@ -426,8 +428,8 @@ int red::polyloc::do_printf(string_view fmt, std::ostream& outs, const std::loca
         if (tok.size() >= 2 && tok[0] == '%')
         {
             auto fmtspec = parsefmt(tok, loc);
-            arg_printer pfarg{ fmtspec, converter };
-            pfarg.put(outs, &va);
+            arg_printer pfarg{ fmtspec, outs, &va };
+            pfarg.put();
         }
         else
         {
@@ -439,12 +441,12 @@ int red::polyloc::do_printf(string_view fmt, std::ostream& outs, const std::loca
 }
 
 
-auto red::polyloc::do_printf(string_view format, std::ostream& outs, size_t max, const std::locale& loc, va_list va) -> std::pair<int, int>
+auto red::polyloc::do_printf(string_view format, std::ostream& outs, size_t max, va_list va) -> std::pair<int, int>
 {
     std::pair<int, int> ret;
 
     std::ostringstream tmp;
-    do_printf(format, tmp, loc, va);
+    do_printf(format, tmp, va);
     auto tmpstr = tmp.str();
     ret.first = tmpstr.size();
 
@@ -467,7 +469,10 @@ auto red::polyloc::do_printf(string_view format, std::ostream& outs, size_t max,
     return ret;
 }
 
-auto red::polyloc::do_printf(string_view format, std::ostream& outs, size_t max, va_list args) -> std::pair<int, int>
+auto red::polyloc::do_printf(string_view format, std::ostream& outs, size_t max, const std::locale& loc, va_list args) -> std::pair<int, int>
 {
-    return do_printf(format, outs, max, std::locale{}, args);
+    auto oldloc = outs.imbue(loc);
+    auto result = do_printf(format, outs, max, args);
+    outs.imbue(oldloc);
+    return result;
 }

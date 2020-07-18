@@ -8,8 +8,8 @@
 #endif
 
 #include <iosfwd>
-#include "boost/iostreams/stream_buffer.hpp"
-#include "boost/iostreams/device/array.hpp"
+#include <boost/iostreams/stream_buffer.hpp>
+#include <boost/iostreams/device/array.hpp>
 
 
 namespace red
