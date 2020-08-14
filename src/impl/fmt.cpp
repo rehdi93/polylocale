@@ -28,8 +28,8 @@ constexpr char FMT_FROM_VA = '*';
 // https://regex101.com/r/Imw6fT/1
 constexpr auto FMT_PATTERN = "%"
     "([" CH_FLAGS "]+)?"
-    "([0-9]+|\\*)?"
-    "(\\.[0-9]+|\\*)?"
+    "(" R"([0-9]+|\*)" ")?"
+    "(" R"(\.[0-9]+|\.\*)" ")?"
     "(" RX_LENGTHMOD ")?"
     "([" CH_TYPES "])";
 
@@ -224,11 +224,11 @@ fmtspec_t parsefmt2(std::string const& spec)
         Flags, FieldWidth, Precision, LengthMod, Type
     };
     fmtspec_t fmtspec;
+    fmtspec.fmt = spec;
 
     std::smatch matches;
     if (std::regex_match(spec, matches, rx))
     {
-        fmtspec.fmt = spec;
         fmtspec.conversion = *matches[Type].first;
         //const auto start = std::addressof(*matches[FullMatch].first);
 

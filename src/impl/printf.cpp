@@ -399,18 +399,15 @@ private:
 
 int red::polyloc::do_printf(string_view format, std::ostream& outs, const std::locale& loc, va_list args)
 {
-    auto oldloc = outs.imbue(loc);
-    int result = do_printf(format, outs, args);
-    outs.imbue(oldloc);
-    return result;
+    boost::io::ios_locale_saver _s_{ outs };
+    outs.imbue(loc);
+    return do_printf(format, outs, args);
 }
 
 int red::polyloc::do_printf(string_view fmt, std::ostream& outs, va_list args)
 {
     if (fmt.empty())
         return 0;
-
-    auto loc = outs.getloc();
 
 #ifdef __GNUC__
     va_list va;
@@ -427,7 +424,7 @@ int red::polyloc::do_printf(string_view fmt, std::ostream& outs, va_list args)
     {
         if (tok.size() >= 2 && tok[0] == '%')
         {
-            auto fmtspec = parsefmt(tok, loc);
+            auto fmtspec = parsefmt2(tok);
             arg_printer pfarg{ fmtspec, outs, &va };
             pfarg.put();
         }
@@ -444,11 +441,9 @@ int red::polyloc::do_printf(string_view fmt, std::ostream& outs, va_list args)
 auto red::polyloc::do_printf(string_view format, std::ostream& outs, size_t max, va_list va) -> std::pair<int, int>
 {
     std::pair<int, int> ret;
-
     std::ostringstream tmp;
-    do_printf(format, tmp, va);
-    auto tmpstr = tmp.str();
-    ret.first = tmpstr.size();
+    tmp.copyfmt(outs);
+    ret.first = do_printf(format, tmp, va);
 
     if (max == 0)
     {
@@ -457,11 +452,12 @@ auto red::polyloc::do_printf(string_view format, std::ostream& outs, size_t max,
     else if (ret.first < max)
     {
         ret.second = ret.first;
-        outs << tmpstr;
+        outs << tmp.str();
     }
     else
     {
-        auto to_be_writen = string_view(tmpstr).substr(0, max - 1);
+        auto str = tmp.str();
+        auto to_be_writen = string_view(str).substr(0, max - 1);
         ret.second = to_be_writen.size();
         outs << to_be_writen;
     }
@@ -471,8 +467,7 @@ auto red::polyloc::do_printf(string_view format, std::ostream& outs, size_t max,
 
 auto red::polyloc::do_printf(string_view format, std::ostream& outs, size_t max, const std::locale& loc, va_list args) -> std::pair<int, int>
 {
-    auto oldloc = outs.imbue(loc);
-    auto result = do_printf(format, outs, max, args);
-    outs.imbue(oldloc);
-    return result;
+    boost::io::ios_locale_saver _s_{ outs };
+    outs.imbue(loc);
+    return do_printf(format, outs, max, args);;
 }

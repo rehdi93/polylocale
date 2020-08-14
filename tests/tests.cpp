@@ -158,7 +158,7 @@ TEST_CASE("Formating integers", "[sprintf][format]")
     auto localename = "C";
     auto loc = locale_ptr(poly_newlocale(POLY_ALL_MASK, localename, NULL));
     auto ploc = loc.get();
-    char_buffer<1024> buffer;
+    char_buffer<100> buffer;
 
     INFO("Locale: " << localename);
 
@@ -190,7 +190,7 @@ TEST_CASE("Formating floating point", "[sprintf][format]")
 {
     auto localename = "C";
     poly_locale_t ploc = poly_newlocale(POLY_ALL_MASK, localename, NULL);
-    char_buffer<1024> buffer;
+    char_buffer<100> buffer;
     const double pow_2_85 = 38685626227668133590597632.0;
 
     INFO("Locale: " << localename);
@@ -270,7 +270,7 @@ TEST_CASE("Size handler bug", "[bug][.]")
 {
     auto localename = "C";
     auto loc = locale_ptr(poly_newlocale(POLY_ALL_MASK, localename, NULL));
-    char_buffer<1024> buffer;
+    char_buffer<50> buffer;
 
     intmax_t j = -1;
     int z = 2;
