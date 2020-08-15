@@ -393,7 +393,7 @@ public:
 
     auto put(std::ostream& os)
     {
-        if (fmtspec.conversion == fmtspec.ILL_FORMED)
+        if (!fmtspec.valid())
         {
             // invalid format
             red::string_view invalid = fmtspec.fmt;
@@ -471,7 +471,7 @@ int red::polyloc::do_printf(string_view fmt, std::ostream& outs, va_list args)
     {
         if (tok.size() >= 2 && tok[0] == '%')
         {
-            auto fmtspec = parsefmt2(tok);
+            auto fmtspec = parsefmt(tok);
             arg_context ctx{ fmtspec, &va };
             outs << ctx;
         }

@@ -64,20 +64,20 @@ bool isfmtflag(char ch, bool zero, bool space)
 
 bool isfmttype(char ch)
 {
-    auto end_ = end(FMT_TYPES);
-    return find(begin(FMT_TYPES), end_, ch) != end_;
+    auto const e = end(FMT_TYPES);
+    return find(begin(FMT_TYPES), e, ch) != e;
 }
 
-bool isfmtsize(char ch)
+bool isfmtlength(char ch)
 {
-    auto end_ = end(FMT_LENGTHMOD);
-    return find(begin(FMT_LENGTHMOD), end_, ch) != end_;
+    auto const e = end(FMT_LENGTHMOD);
+    return find(begin(FMT_LENGTHMOD), e, ch) != e;
 }
 
 bool isfmtchar(char ch, bool digits)
 {
     return ch == FMT_PRECISION || ch == FMT_FROM_VA ||
-        isfmtflag(ch, digits) || isfmtsize(ch) || isfmttype(ch)
+        isfmtflag(ch, digits) || isfmtlength(ch) || isfmttype(ch)
         || (digits && isdigit(ch, std::locale::classic()));
 }
 
@@ -137,84 +137,7 @@ bool fmt_separator::operator() (iterator& next, iterator end, std::string& token
 }
 
 
-fmtspec_t parsefmt(red::string_view spec, std::locale const& locale)
-{
-    constexpr auto npos = red::string_view::npos;
-    fmtspec_t fmtspec{ spec };
-    assert(spec.size() >= 2 && spec[0] == FMT_START);
-
-    size_t pos = 1;
-
-    // Flags
-    auto i = spec.find_first_not_of(FMT_FLAGS, pos);
-    if (i != npos)
-    {
-        fmtspec.flags = spec.substr(1, i-1);
-        pos = i;
-    }
-
-    // field width
-    if (spec[pos] == FMT_FROM_VA)
-    {
-        fmtspec.field_width = -(int)FMT_FROM_VA;
-        pos++;
-    }
-    else if (isdigit(spec[pos], locale)) try
-    {
-        size_t converted;
-        fmtspec.field_width = svtol(spec.substr(pos), &converted);
-        pos += converted;
-    }
-    catch (const std::exception&) {
-        // no conversion took place
-    }
-
-    // precision
-    if (spec[pos] == FMT_PRECISION)
-    {
-        pos++;
-        if (spec[pos] == FMT_FROM_VA)
-        {
-            fmtspec.precision = fmtspec.VAL_VA;
-            pos++;
-        }
-        else try
-        {
-            size_t converted;
-            fmtspec.precision = svtol(spec.substr(pos), &converted);
-            pos += converted;
-        }
-        catch (const std::exception&) {
-            // no conversion took place
-        }
-    }
-    
-    // size overrides
-    i = spec.find_first_of(FMT_LENGTHMOD, pos);
-    if (i != npos)
-    {
-        pos = i;
-        if (spec[pos] == 'I') {
-            i = spec.find_first_not_of("6432", pos);
-        }
-        else {
-            i = spec.find_first_not_of(FMT_LENGTHMOD, pos);
-        }
-        
-        fmtspec.length_mod = spec.substr(pos, i - pos);
-        pos = i;
-    }
-
-    // conversion spec
-    i = spec.find_first_of(FMT_TYPES, pos);
-    if (i != npos)
-        fmtspec.conversion = spec.at(i);
-
-    return fmtspec;
-}
-
-
-fmtspec_t parsefmt2(std::string const& spec)
+fmtspec_t parsefmt(std::string const& spec)
 {
     using red::string_view;
 

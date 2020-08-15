@@ -7,7 +7,7 @@ namespace red::polyloc
 {
     bool isfmtflag(char ch, bool zero = true, bool space = true);
     bool isfmttype(char ch);
-    bool isfmtsize(char ch);
+    bool isfmtlength(char ch);
     bool isfmtchar(char ch, bool digits = true);
 
     struct fmt_separator
@@ -26,16 +26,18 @@ namespace red::polyloc
     struct fmtspec_t
     {
         static constexpr int VAL_VA = -(int)'*', VAL_AUTO = -1;
-        static constexpr char ILL_FORMED = '\030';
 
         // the full format specefier, maybe change to std::string?
         red::string_view fmt;
 
         red::string_view flags, length_mod;
-        int field_width = -1, precision = -1;
-        char conversion = ILL_FORMED;
+        int field_width = VAL_AUTO, precision = VAL_AUTO;
+        char conversion = '\030';
+
+        bool valid() const noexcept {
+            return isfmttype(conversion);
+        }
     };
 
-    fmtspec_t parsefmt(string_view fmt, std::locale const& locale);
-    fmtspec_t parsefmt2(std::string const& spec);
+    fmtspec_t parsefmt(std::string const& spec);
 }
