@@ -18,6 +18,8 @@
 #include <codecvt>
 #include <algorithm>
 #include <optional>
+#include <variant>
+
 #include <cstddef>
 #include <cmath>
 #include <cassert>
@@ -83,233 +85,25 @@ enum class arg_flags : unsigned short
     sizefield = wide|narrow
 };
 
+using arg_variant = std::variant<char, wchar_t, char*, wchar_t*, void*, intmax_t, uintmax_t, long double>;
 
-struct arg_printer
+class arg_context
 {
-    arg_printer(fmtspec_t fmts, std::ostream& os_, va_list* pva)
-    : fmtspec(fmts), os(os_), va(pva)
-    {
-    }
-
-
-    std::ostream& os;
-    va_list* va;
     fmtspec_t fmtspec;
-    mutable std::optional<wconverter> conv;
-    arg_flags aflags{};
+    va_list* va;
+    arg_flags aflags = arg_flags::none;
 
-    // print value
-    auto put()
-    {
-        ios_saver<char> _g_(os);
-
-        apply_flags();
-        apply_fwpr();
-        apply_len();
-
-        switch (fmtspec.conversion)
-        {
-        case 'C': // wide char
-            aflags |= arg_flags::wide;
-        case 'c': // char
-            if (bm::has(aflags, arg_flags::wide)) {
-                auto v = va_arg(*va, wint_t);
-                wchar_t cp[1] = { (wchar_t)v };
-                put_str({ cp, 1 });
-            }
-            else {
-                auto v = va_arg(*va, int);
-                char cp[1] = { (char)v };
-                put_str({ cp, 1 });
-            }
-            break;
-
-        case 'u': // Unsigned decimal integer
-            os << std::dec;
-            goto common_uint;
-
-        case 'd': // Signed decimal integer
-        case 'i':
-            os << std::dec;
-
-            if (bitmask::has(aflags, arg_flags::wide)) {
-                put_int(va_arg(*va, int64_t));
-            }
-            else {
-                put_int(va_arg(*va, int32_t));
-            }
-            break;
-
-        case 'o': // Unsigned octal integer
-            os << std::oct;
-            goto common_uint;
-
-        case 'X': // Unsigned hexadecimal integer w/ uppercase letters
-            os.setf(ios::uppercase);
-        case 'x': // Unsigned hexadecimal integer w/ lowercase letters
-            os << std::hex;
-            goto common_uint;
-
-        case 'E': // float, scientific notation
-            os.setf(ios::uppercase);
-        case 'e':
-            os << std::scientific;
-            put_fp(va_arg(*va, double));
-            break;
-
-        case 'F': // float, fixed notation
-            os.setf(ios::uppercase);
-        case 'f':
-            os << std::fixed;
-            put_fp(va_arg(*va, double));
-            break;
-
-        case 'G': // float, general notation
-            os.setf(ios::uppercase);
-        case 'g':
-            os << std::defaultfloat;
-            put_fp(va_arg(*va, double));
-            break;
-
-        case 'A': // hex float
-            os.setf(ios::uppercase);
-        case 'a':
-            os << std::hexfloat;
-            put_fp(va_arg(*va, double));
-            break;
-
-        case 'p': // pointer
-            os << std::hex << va_arg(*va, void*);
-            break;
-
-        case 'S': // wide string
-            aflags |= arg_flags::wide;
-        case 's': // string
-            if (bm::has(aflags, arg_flags::wide)) {
-                put_str(va_arg(*va, wchar_t*));
-            }
-            else {
-                put_str(va_arg(*va, char*));
-            }
-            break;
-
-        case 'n': // weird write-bytes specifier (not implemented)
-        default:
-            // invalid, print fmt as-is minus %
-            os << fmtspec.fmt.substr(1);
-            break;
-
-            // https://docs.microsoft.com/en-us/cpp/c-runtime-library/format-specification-syntax-printf-and-wprintf-functions?view=vs-2019#argument-size-specification
-            // integer args w/o size spec are treated as 32bit
-        common_uint:
-            if (bitmask::has(aflags, arg_flags::wide)) {
-                auto num = va_arg(*va, uint64_t);
-                put_int(num);
-            }
-            else {
-                auto num = va_arg(*va, uint32_t);
-                put_int(num);
-            }
-            break;
-        }
-    }
-
-private:
-
-    void put_fp(double number) const
-    {
-        if (bm::has(aflags, arg_flags::altform)) {
-            os.setf(ios::showpoint);
-        }
-
-        if (bm::has(aflags, arg_flags::blankpos) && number >= 0)
-            os.put(' ');
-
-        if (fmtspec.precision == -1)
-        {
-            os.precision(6);
-        }
-        else if (fmtspec.precision == 0)
-        {
-            number = std::round(number);
-        }
-
-        os << number;
-    }
-
-    void put_str(red::wstring_view str) const {
-        if (!conv) {
-            conv.emplace(new cvt_t(os.getloc().name()));
-        }
-        std::string tmp = conv->to_bytes(str.data(), str.data() + str.size());
-        put_str(tmp);
-    }
-
-    void put_str(red::string_view str) const {
-        if (fmtspec.precision > 0)
-        {
-            str = str.substr(0, fmtspec.precision);
-        }
-
-        os << str;
-    }
-
-    template<class I>
-    using is_int = std::enable_if_t<std::is_integral<I>::value>;
-
-    template<typename T, class = is_int<T>>
-    void put_int(T val) const
-    {
-        if (bm::has(aflags, arg_flags::altform)) {
-            os << std::showbase;
-        }
-
-        if (bm::has(aflags, arg_flags::blankpos) && val >= 0 && fmtspec.field_width < 2)
-            os.put(' ');
-
-        if (fmtspec.precision >= 0 && val == 0)
-        {
-            if (bitmask::has_all(os.flags(), ios::oct | ios::showbase))
-            {
-                // for octal, if both the converted value and the precision are ​0​, single ​0​ is written.
-                os << 0;
-                return;
-            }
-            else if (!bm::has(os.flags(), ios::showpos))
-            {
-                return;
-            }
-        }
-
-        if (fmtspec.precision > 0)
-        {
-            auto remainingW = fmtspec.field_width - fmtspec.precision;
-            if (remainingW > 0)
-            {
-                char s = ' ';
-                os.width(remainingW);
-                os.fill(s);
-                os << s;
-            }
-
-            os.width(fmtspec.precision);
-            os.fill('0');
-        }
-
-        os << val;
-    }
-
-    void apply_flags()
+    void apply_flags(std::ostream& os)
     {
         for (auto f : fmtspec.flags)
         {
             switch (f)
             {
             case '-': // left justify
-                os << std::left;
+                os.setf(ios::left, ios::adjustfield);
                 break;
             case '+': // show positive sign
-                os << std::showpos;
+                os.setf(ios::showpos);
                 break;
             case ' ': // Use a blank to prefix the output value if it is signed and positive, 
                 aflags |= arg_flags::blankpos;
@@ -333,7 +127,7 @@ private:
     }
 
     // field width, precision
-    void apply_fwpr()
+    void apply_fwpr(std::ostream& os)
     {
         if (fmtspec.field_width == fmtspec.VAL_VA)
             fmtspec.field_width = va_arg(*va, int);
@@ -392,7 +186,308 @@ private:
             }
         }
     }
+
+    arg_variant get_value()
+    {
+        using ssize_t = std::make_signed_t<size_t>;
+        using uptrdiff_t = std::make_unsigned_t<ptrdiff_t>;
+
+        arg_variant val;
+
+        if (fmtspec.length_mod == "I32") {
+            fmtspec.length_mod = {};
+        }
+        else if (fmtspec.length_mod == "I64") {
+            fmtspec.length_mod = "j";
+        }
+
+        switch (fmtspec.conversion)
+        {
+        case 'C': // chars
+        case 'c':
+            if (fmtspec.length_mod == "l" || fmtspec.conversion == 'C') {
+                auto arg = va_arg(*va, wint_t);
+                val = (wchar_t)arg;
+            }
+            else {
+                auto arg = va_arg(*va, int);
+                val = (char)arg;
+            }
+            break;
+
+        case 'S': // strings
+        case 's':
+            if (fmtspec.length_mod == "l" || fmtspec.conversion == 'S') {
+                val = va_arg(*va, wchar_t*);
+            }
+            else {
+                val = va_arg(*va, char*);
+            }
+            break;
+
+        case 'd': // integers
+        case 'i':
+            if (fmtspec.length_mod == "h") {
+                auto arg = va_arg(*va, signed char);
+                val = intmax_t(arg);
+            }
+            else if (fmtspec.length_mod == "hh") {
+                auto arg = va_arg(*va, short);
+                val = intmax_t(arg);
+            }
+            else if (fmtspec.length_mod == "l") {
+                auto arg = va_arg(*va, long);
+                val = intmax_t(arg);
+            }
+            else if (fmtspec.length_mod == "ll") {
+                auto arg = va_arg(*va, long long);
+                val = intmax_t(arg);
+            }
+            else if (fmtspec.length_mod == "j") {
+                val = va_arg(*va, intmax_t);
+            }
+            else if (fmtspec.length_mod == "z") {
+                auto arg = va_arg(*va, ssize_t);
+                val = intmax_t(arg);
+            }
+            else if (fmtspec.length_mod == "t") {
+                auto arg = va_arg(*va, ptrdiff_t);
+                val = intmax_t(arg);
+            }
+            else {
+                auto arg = va_arg(*va, int);
+                val = intmax_t(arg);
+            }
+            break;
+
+        case 'u': // unsigned integers
+        case 'o':
+        case 'X': case 'x':
+            if (fmtspec.length_mod == "h") {
+                auto arg = va_arg(*va, unsigned char);
+                val = uintmax_t(arg);
+            }
+            else if (fmtspec.length_mod == "hh") {
+                auto arg = va_arg(*va, unsigned short);
+                val = uintmax_t(arg);
+            }
+            else if (fmtspec.length_mod == "l") {
+                auto arg = va_arg(*va, unsigned long);
+                val = uintmax_t(arg);
+            }
+            else if (fmtspec.length_mod == "ll") {
+                auto arg = va_arg(*va, unsigned long long);
+                val = uintmax_t(arg);
+            }
+            else if (fmtspec.length_mod == "j") {
+                val = va_arg(*va, uintmax_t);
+            }
+            else if (fmtspec.length_mod == "z") {
+                auto arg = va_arg(*va, size_t);
+                val = uintmax_t(arg);
+            }
+            else if (fmtspec.length_mod == "t") {
+                auto arg = va_arg(*va, uptrdiff_t);
+                val = uintmax_t(arg);
+            }
+            else {
+                auto arg = va_arg(*va, unsigned);
+                val = uintmax_t(arg);
+            }
+            break;
+            
+        case 'E': case 'e': // floating point
+        case 'F': case 'f':
+        case 'G': case 'g':
+        case 'A': case 'a':
+            if (fmtspec.length_mod.empty()) {
+                val = (long double) va_arg(*va, double);
+            }
+            else if (fmtspec.length_mod == "L") {
+                val = va_arg(*va, long double);
+            }
+            break;
+
+        case 'p':
+            val = va_arg(*va, void*);
+            break;
+
+        case 'n':
+            break;
+        default:
+            break;
+        }
+
+        return val;
+    }
+
+    void put_fp(long double number, std::ostream& os) const
+    {
+        switch (fmtspec.conversion)
+        {
+        case 'F':
+            os.setf(ios::uppercase);
+        case 'f':
+            os << std::fixed;
+            break;
+        case 'E':
+            os.setf(ios::uppercase);
+        case 'e':
+            os << std::scientific;
+            break;
+        case 'G':
+            os.setf(ios::uppercase);
+        case 'g':
+            os << std::defaultfloat;
+            break;
+        case 'A':
+            os.setf(ios::uppercase);
+        case 'a':
+            os << std::hexfloat;
+            break;
+        }
+
+        if (bm::has(aflags, arg_flags::altform)) {
+            os.setf(ios::showpoint);
+        }
+
+        if (bm::has(aflags, arg_flags::blankpos) && number >= 0)
+            os.put(' ');
+
+        if (fmtspec.precision == -1)
+        {
+            os.precision(6);
+        }
+        else if (fmtspec.precision == 0)
+        {
+            number = std::round(number);
+        }
+
+        os << number;
+    }
+
+    void put_str(red::wstring_view str, std::ostream& os) const {
+        auto conv = wconverter(new cvt_t(os.getloc().name()));
+        std::string tmp = conv.to_bytes(str.data(), str.data() + str.size());
+        put_str(tmp, os);
+    }
+
+    void put_str(red::string_view str, std::ostream& os) const {
+        if (fmtspec.precision > 0)
+        {
+            str = str.substr(0, fmtspec.precision);
+        }
+
+        os << str;
+    }
+
+    template<class I>
+    using Integer = std::enable_if_t<std::is_integral<I>::value>;
+
+    template<typename T, class = Integer<T>>
+    void put_int(T val, std::ostream& os) const
+    {
+        switch (fmtspec.conversion)
+        {
+        case 'd': case 'i': case 'u':
+            os << std::dec;
+            break;
+        case 'X':
+            os.setf(ios::uppercase);
+        case 'x':
+            os << std::hex;
+            break;
+        case 'o':
+            os << std::oct;
+            break;
+        }
+
+        if (bm::has(aflags, arg_flags::altform)) {
+            os << std::showbase;
+        }
+
+        if (bm::has(aflags, arg_flags::blankpos) && val >= 0 && fmtspec.field_width < 2)
+            os.put(' ');
+
+        if (fmtspec.precision >= 0 && val == 0)
+        {
+            if (bitmask::has_all(os.flags(), ios::oct | ios::showbase))
+            {
+                // for octal, if both the converted value and the precision are ​0​, single ​0​ is written.
+                os << 0;
+                return;
+            }
+            else if (!bm::has(os.flags(), ios::showpos))
+            {
+                return;
+            }
+        }
+
+        if (fmtspec.precision > 0)
+        {
+            auto remainingW = fmtspec.field_width - fmtspec.precision;
+            if (remainingW > 0)
+            {
+                char s = ' ';
+                os.width(remainingW);
+                os.fill(s);
+                os << s;
+            }
+
+            os.width(fmtspec.precision);
+            os.fill('0');
+        }
+
+        os << val;
+    }
+
+    
+public:
+    arg_context(fmtspec_t fmts, va_list* pva) : fmtspec(fmts), va(pva)
+    {}
+
+    auto put(std::ostream& os)
+    {
+        using std::get_if;
+        ios_saver<char> _g_(os);
+
+        apply_flags(os);
+        apply_fwpr(os);
+        auto value = get_value();
+
+        if (auto ptr = get_if<char>(&value)) {
+            put_str({ ptr, 1 }, os);
+        }
+        else if (auto ptr = get_if<wchar_t>(&value)) {
+            put_str({ ptr, 1 }, os);
+        }
+        else if (auto ptr = get_if<char*>(&value)) {
+            put_str(*ptr, os);
+        }
+        else if (auto ptr = get_if<wchar_t*>(&value)) {
+            put_str(*ptr, os);
+        }
+        else if (auto ptr = get_if<void*>(&value)) {
+            os << std::hex << ptr;
+        }
+        else if (auto ptr = get_if<intmax_t>(&value)) {
+            put_int(*ptr, os);
+        }
+        else if (auto ptr = get_if<uintmax_t>(&value)) {
+            put_int(*ptr, os);
+        }
+        else if (auto ptr = get_if<long double>(&value)) {
+            put_fp(*ptr, os);
+        }
+
+    }
+
 };
+
+auto& operator<< (std::ostream& os, arg_context& ctx) {
+    ctx.put(os);
+    return os;
+}
 
 } // unnamed
 
@@ -425,8 +520,8 @@ int red::polyloc::do_printf(string_view fmt, std::ostream& outs, va_list args)
         if (tok.size() >= 2 && tok[0] == '%')
         {
             auto fmtspec = parsefmt2(tok);
-            arg_printer pfarg{ fmtspec, outs, &va };
-            pfarg.put();
+            arg_context ctx{ fmtspec, &va };
+            outs << ctx;
         }
         else
         {

@@ -24,12 +24,12 @@ constexpr char FMT_PRECISION = '.';
 // value from VA
 constexpr char FMT_FROM_VA = '*';
 
-// format specifier regex pattern
+// format specifier regex
 // https://regex101.com/r/Imw6fT/1
 constexpr auto FMT_PATTERN = "%"
     "([" CH_FLAGS "]+)?"
-    "(" R"([0-9]+|\*)" ")?"
-    "(" R"(\.[0-9]+|\.\*)" ")?"
+    "(" R"([0-9]+|\*)" ")?" // field width
+    "(" R"(\.[0-9]+|\.\*)" ")?" // precision
     "(" RX_LENGTHMOD ")?"
     "([" CH_TYPES "])";
 

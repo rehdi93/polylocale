@@ -266,7 +266,7 @@ TEST_CASE("sprintf_l tests", "[sprintf]")
     TEST_FMT("42.1540000", "%#0-10.3f", 42.1539);
 }
 
-TEST_CASE("Size handler bug", "[bug][.]")
+TEST_CASE("Size handler bug", "[bug]")
 {
     auto localename = "C";
     auto loc = locale_ptr(poly_newlocale(POLY_ALL_MASK, localename, NULL));
