@@ -281,7 +281,7 @@ TEST_CASE("Size handler bug", "[bug]")
     result = buffer;
 
     CAPTURE(returnValue, expected.size(), j,z,t);
-    INFO("Format = \"" "%ji %zi %ti" "\"");
+    INFO(R"(Format = "%ji %zi %ti")");
     REQUIRE(expected == result);
 }
 

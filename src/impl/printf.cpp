@@ -139,67 +139,12 @@ class arg_context
         os.precision(fmtspec.precision > 0 ? fmtspec.precision : 0);
     }
 
-    void apply_len() noexcept
-    {
-        if (!fmtspec.length_mod.empty())
-        {
-            if (fmtspec.length_mod == "h")
-            {
-                // halfwidth
-                aflags |= arg_flags::narrow;
-            }
-            else if (fmtspec.length_mod == "hh")
-            {
-                // quarterwidth
-            }
-            // are we 64-bit (unix style)
-            else if (fmtspec.length_mod == "l")
-            {
-                if (sizeof(long) == 8 || fmtspec.conversion == 'c' || fmtspec.conversion == 's')
-                    aflags |= arg_flags::wide;
-            }
-            else if (fmtspec.length_mod == "ll")
-            {
-                aflags |= arg_flags::wide;
-            }
-            // are we 64-bit on intmax_t? (c99)
-            else if (fmtspec.length_mod == "j")
-            {
-                if (sizeof(size_t) == 8)
-                    aflags |= arg_flags::wide;
-            }
-            // are we 64-bit on size_t or ptrdiff_t? (c99)
-            else if (fmtspec.length_mod == "z" || fmtspec.length_mod == "t")
-            {
-                if (sizeof(ptrdiff_t) == 8)
-                    aflags |= arg_flags::wide;
-            }
-            // are we 64-bit (msft style)
-            else if (fmtspec.length_mod == "I64")
-            {
-                aflags |= arg_flags::wide;
-            }
-            else if (fmtspec.length_mod == "I32")
-            {
-                if (sizeof(void*) == 8)
-                    aflags |= arg_flags::wide;
-            }
-        }
-    }
-
     arg_variant get_value()
     {
         using ssize_t = std::make_signed_t<size_t>;
         using uptrdiff_t = std::make_unsigned_t<ptrdiff_t>;
 
         arg_variant val;
-
-        if (fmtspec.length_mod == "I32") {
-            fmtspec.length_mod = {};
-        }
-        else if (fmtspec.length_mod == "I64") {
-            fmtspec.length_mod = "j";
-        }
 
         switch (fmtspec.conversion)
         {
@@ -243,7 +188,7 @@ class arg_context
                 auto arg = va_arg(*va, long long);
                 val = intmax_t(arg);
             }
-            else if (fmtspec.length_mod == "j") {
+            else if (fmtspec.length_mod == "j" || fmtspec.length_mod == "I64") {
                 val = va_arg(*va, intmax_t);
             }
             else if (fmtspec.length_mod == "z") {
@@ -279,7 +224,7 @@ class arg_context
                 auto arg = va_arg(*va, unsigned long long);
                 val = uintmax_t(arg);
             }
-            else if (fmtspec.length_mod == "j") {
+            else if (fmtspec.length_mod == "j" || fmtspec.length_mod == "I64") {
                 val = va_arg(*va, uintmax_t);
             }
             else if (fmtspec.length_mod == "z") {
@@ -300,11 +245,12 @@ class arg_context
         case 'F': case 'f':
         case 'G': case 'g':
         case 'A': case 'a':
-            if (fmtspec.length_mod.empty()) {
-                val = (long double) va_arg(*va, double);
-            }
-            else if (fmtspec.length_mod == "L") {
+            if (fmtspec.length_mod == "L") {
                 val = va_arg(*va, long double);
+            }
+            else {
+                auto arg = va_arg(*va, double);
+                val = (long double)arg;
             }
             break;
 
@@ -313,7 +259,6 @@ class arg_context
             break;
 
         case 'n':
-            break;
         default:
             break;
         }
@@ -448,6 +393,14 @@ public:
 
     auto put(std::ostream& os)
     {
+        if (fmtspec.conversion == fmtspec.ILL_FORMED)
+        {
+            // invalid format
+            red::string_view invalid = fmtspec.fmt;
+            os << invalid.substr(1);
+            return;
+        }
+
         using std::get_if;
         ios_saver<char> _g_(os);
 
@@ -479,7 +432,6 @@ public:
         else if (auto ptr = get_if<long double>(&value)) {
             put_fp(*ptr, os);
         }
-
     }
 
 };
