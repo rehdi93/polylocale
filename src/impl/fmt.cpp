@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <iterator>
-#include <functional>
 #include <locale>
 #include <regex>
 
@@ -15,7 +14,7 @@ namespace
 
 constexpr char FMT_START = '%';
 constexpr char FMT_LENGTHMOD[] = "hljztLI";
-#define RX_LENGTHMOD "h|hh|l|ll|j|z|t|L|I32|I64"
+#define RX_LENGTHMOD             "h|hh|l|ll|j|z|t|L|I32|I64"
 constexpr char FMT_FLAGS[] = CH_FLAGS;
 constexpr char FMT_TYPES[] = CH_TYPES;
 

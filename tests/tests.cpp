@@ -1,47 +1,27 @@
 // adapted from stb/tests/test_sprintf.c
 #include <memory>
 #include <string>
+#include <string_view>
 #include <array>
 #include <vector>
 #include <cstddef>
 #include <locale>
 
 #include "polylocale.h"
-#include "boost/utility/string_view.hpp"
+
 #define CATCH_CONFIG_RUNNER
 #include "catch.hpp"
 
-int main(int argc, char* argv[]) {
-    // global setup...
 #ifdef WIN32
-    system("chcp 65001");
-#endif // WIN32
+#include <mbctype.h>
+#endif
 
-    int result = Catch::Session().run(argc, argv);
+static std::string COMMA_LC, POINT_LC;
 
-    // global clean-up...
 
-    return result;
-}
 
-using boost::string_view;
-
-template<size_t Count>
-struct char_buffer : std::array<char, Count>
-{
-    char_buffer()
-    {
-        // sprintf must write the terminating null
-        this->fill('\3');
-    }
-
-    operator char* () {
-        return &this->front();
-    }
-    operator string_view() {
-        return { &this->front() };
-    }
-};
+using std::string_view;
+using std::string;
 
 #ifdef POLYLOC_UNDECORATED
 static_assert(std::is_same_v<locale_t, poly_locale*>, "locale_t is not poly_locale*");
@@ -116,7 +96,62 @@ static auto find_num_locale(char dp) -> std::string
     exit(42);
 }
 
-static const std::string COMMA_LC = find_num_locale(','), POINT_LC = find_num_locale('.');
+static void init_locales()
+{
+    using std::locale; 
+    using std::clog;
+
+    try
+    {
+        if (auto env = getenv("POINT_LC")) {
+            POINT_LC = env;
+            auto l = locale(POINT_LC);
+            clog << "POINT_LC=" << POINT_LC << "\n";
+        }
+    }
+    catch (const std::exception& e)
+    {
+        clog << "[POINT_LC] " << e.what() << '\n';
+    }
+
+    try
+    {
+
+        if (auto env = getenv("COMMA_LC")) {
+            COMMA_LC = env;
+            auto l = locale(COMMA_LC);
+            clog << "COMMA_LC=" << COMMA_LC << "\n";
+        }
+    }
+    catch (const std::exception& e)
+    {
+        clog << "[COMMA_LC] " << e.what() << '\n';
+    }
+
+    if (COMMA_LC.empty())
+    {
+        COMMA_LC = find_num_locale(',');
+    }
+    if (POINT_LC.empty())
+    {
+        POINT_LC = find_num_locale('.');
+    }
+}
+
+int main(int argc, char* argv[]) {
+#ifdef WIN32
+    _setmbcp(_MB_CP_UTF8);
+#endif // WIN32
+
+    // setup test locales
+    init_locales();
+
+    auto session = Catch::Session();
+    int result = session.run(argc, argv);
+
+    return result;
+}
+
 
 
 struct sprintf_test_result
@@ -145,12 +180,12 @@ sprintf_test_result do_test_sprintf(std::string expected, char* buf, size_t coun
     };
 }
 
-#define FMT_TEST_BASE(expected_, fmt, buffer, count, locp, ...) SECTION(#fmt ", " #__VA_ARGS__ " --> " #expected_) { \
+#define TEST_FMT_BASE(expected_, fmt, buffer, count, locp, ...) SECTION(#fmt ", " #__VA_ARGS__ " --> " #expected_) { \
     auto tr = do_test_sprintf(expected_, buffer, count, fmt, locp, __VA_ARGS__); \
     CAPTURE(tr.returnValue, tr.expected.size()); \
     REQUIRE(tr.expected == tr.result); }
     
-#define TEST_FMT(expected_, fmt, ...) FMT_TEST_BASE(expected_, fmt, buffer, size_t(-1), ploc, __VA_ARGS__)
+#define TEST_FMT(expected_, fmt, ...) TEST_FMT_BASE(expected_, fmt, buffer.data(), size_t(-1), ploc, __VA_ARGS__)
 
 
 TEST_CASE("Formating integers", "[sprintf][format]")
@@ -158,7 +193,7 @@ TEST_CASE("Formating integers", "[sprintf][format]")
     auto localename = "C";
     auto loc = locale_ptr(poly_newlocale(POLY_ALL_MASK, localename, NULL));
     auto ploc = loc.get();
-    char_buffer<100> buffer;
+    auto buffer = string(100, '\3');
 
     INFO("Locale: " << localename);
 
@@ -191,7 +226,7 @@ TEST_CASE("Formating floating point", "[sprintf][format]")
 {
     auto localename = "C";
     poly_locale_t ploc = poly_newlocale(POLY_ALL_MASK, localename, NULL);
-    char_buffer<100> buffer;
+    auto buffer = string(100, '\3');
     const double pow_2_85 = 38685626227668133590597632.0;
 
     INFO("Locale: " << localename);
@@ -249,17 +284,17 @@ TEST_CASE("(new|free|dup)locale", "[polyC]") {
 
 TEST_CASE("sprintf_l tests", "[sprintf]")
 {
-    char_buffer<1024> buffer;
+    auto buffer = string(1024, '\3');
     std::string locname = "C";
     auto ploc = poly_newlocale(POLY_ALL_MASK, locname.c_str(), NULL);
 
     SECTION("600 width") {
-        REQUIRE(poly_sprintf_l(buffer, "%d  %600s", ploc, 3, "abc") == 603);
+        REQUIRE(poly_sprintf_l(buffer.data(), "%d  %600s", ploc, 3, "abc") == 603);
     }
 
     SECTION("% as last char") {
-        int retval = poly_sprintf_l(buffer, "%", ploc, 42);
-        string_view result = buffer;
+        int retval = poly_sprintf_l(buffer.data(), "%", ploc, 42);
+        string_view result = buffer.c_str();
         CAPTURE(retval, result);
         REQUIRE(result == "");
     }
@@ -271,15 +306,15 @@ TEST_CASE("Size handler bug", "[bug]")
 {
     auto localename = "C";
     auto loc = locale_ptr(poly_newlocale(POLY_ALL_MASK, localename, NULL));
-    char_buffer<50> buffer;
+    auto buffer = string(50, '\3');
 
     intmax_t j = -1;
     int z = 2;
     ptrdiff_t t = -3;
     std::string expected = "-1 2 -3", result;
 
-    int returnValue = poly_sprintf_l(buffer, "%ji %zi %ti", loc.get(), j, z, t);
-    result = buffer;
+    int returnValue = poly_sprintf_l(buffer.data(), "%ji %zi %ti", loc.get(), j, z, t);
+    result = buffer.c_str();
 
     CAPTURE(returnValue, expected.size(), j,z,t);
     INFO(R"(Format = "%ji %zi %ti")");
@@ -289,7 +324,7 @@ TEST_CASE("Size handler bug", "[bug]")
 TEST_CASE("snprintf_l tests", "[snprintf]") {
     auto localename = "C";
     auto loc = locale_ptr(poly_newlocale(POLY_ALL_MASK, localename, NULL));
-    char_buffer<1024> buffer;
+    auto buffer = string(1024, '\3');
     auto ploc = loc.get();
     const double pow_2_75 = 37778931862957161709568.0;
 
@@ -297,36 +332,36 @@ TEST_CASE("snprintf_l tests", "[snprintf]") {
 
     SECTION(R"(" %s     %d" --> " b     123")")
     {
-        auto tr = do_test_sprintf(" b     123", buffer, 100, " %s     %d", loc.get(), "b", 123);
+        auto tr = do_test_sprintf(" b     123", buffer.data(), 100, " %s     %d", loc.get(), "b", 123);
         CAPTURE(tr.expected, tr.result, tr.format, tr.returnValue);
         REQUIRE(tr.expected == tr.result);
     }
 
     SECTION("Large float") {
-        auto tr = do_test_sprintf("37778931862957161709568.000000", buffer, 100, "%f", ploc, pow_2_75);
+        auto tr = do_test_sprintf("37778931862957161709568.000000", buffer.data(), 100, "%f", ploc, pow_2_75);
         CAPTURE(tr.expected, tr.result, tr.format, tr.returnValue);
         CHECK(tr.returnValue == 30);
         REQUIRE(tr.expected.substr(0, 17) == tr.result.substr(0, 17));
     }
 
     SECTION("Truncate") {
-        auto tr = do_test_sprintf("number 12", buffer, 10, "number %f", ploc, 123.456789);
+        auto tr = do_test_sprintf("number 12", buffer.data(), 10, "number %f", ploc, 123.456789);
         CAPTURE(tr.expected, tr.result, tr.format, tr.returnValue);
         CHECK(tr.returnValue == 17); // written vs would-be written bytes
         REQUIRE(tr.result == tr.expected);
     }
 
     SECTION("Don't write if count==0, return necessary size") {
-        int ret = poly_snprintf_l(buffer, 0, "7 chars", ploc);
+        int ret = poly_snprintf_l(buffer.data(), 0, "7 chars", ploc);
         REQUIRE(ret == 7);
     }
 
     SECTION("Large paddings") {
-        poly_snprintf_l(buffer, 550, "%d  %600s", ploc, 3, "abc");
-        string_view result = buffer;
+        poly_snprintf_l(buffer.data(), 550, "%d  %600s", ploc, 3, "abc");
+        string_view result = buffer.c_str();
 
         CHECK(result.size() == 549);
-        REQUIRE(poly_snprintf_l(buffer, 600, "%510s     %c", ploc, "a", 'b') == 516);
+        REQUIRE(poly_snprintf_l(buffer.data(), 600, "%510s     %c", ploc, "a", 'b') == 516);
         REQUIRE(poly_snprintf_l(NULL, 0, " %s     %d", ploc, "b", 123) == 10);
     }
 }
@@ -334,23 +369,23 @@ TEST_CASE("snprintf_l tests", "[snprintf]") {
 TEST_CASE("PI to string", "[pi][snprintf]")
 {
     const auto PI = 3.141592653;
-    char_buffer<25> buffer;
+    auto buffer = string(25, '\3');
     auto fmt = "%.4f";
 
     CAPTURE(fmt);
 
     SECTION("decimal point") {
         auto en_us = locale_ptr(poly_newlocale(POLY_ALL_MASK, POINT_LC.c_str(), NULL));
-        poly_snprintf_l(buffer, 25, fmt, en_us.get(), PI);
-        string_view result = buffer;
+        poly_snprintf_l(buffer.data(), 25, fmt, en_us.get(), PI);
+        string_view result = buffer.c_str();
         CAPTURE(POINT_LC);
         REQUIRE(result == "3.1416");
     }
 
     SECTION("decimal comma") {
         auto pt_br = locale_ptr(poly_newlocale(POLY_ALL_MASK, COMMA_LC.c_str(), NULL));
-        poly_snprintf_l(buffer, 25, fmt, pt_br.get(), PI);
-        string_view result = buffer;
+        poly_snprintf_l(buffer.data(), 25, fmt, pt_br.get(), PI);
+        string_view result = buffer.c_str();
         CAPTURE(COMMA_LC);
         REQUIRE(result == "3,1416");
     }
@@ -383,24 +418,21 @@ using namespace std::literals;
 
 TEST_CASE("Wide strings", "[wide]")
 {
-    auto locname = "en_US.utf8";
-    INFO("[!] this test requires '"<<locname<<"' locale");
-
-    auto loc = locale_ptr(poly_newlocale(POLY_ALL_MASK, locname, NULL));
-    char_buffer<128> buffer;
+    auto loc = locale_ptr(poly_newlocale(POLY_ALL_MASK, "pt_br.utf8", NULL));
+    auto buffer = string(128, '\3');
     int ret;
 
     SECTION("%S") {
         auto expected = u8"%S: áéíóú"s;
-        ret = poly_snprintf_l(buffer, 128, "%%S: %S", loc.get(), L"áéíóú");
-        string_view result = buffer;
+        ret = poly_snprintf_l(buffer.data(), 128, "%%S: %S", loc.get(), L"áéíóú");
+        string_view result = buffer.c_str();
         CAPTURE(ret);
         REQUIRE(expected == result);
     }
     SECTION("%ls") {
         auto expected = u8"%ls: áéíóú"s;
-        ret = poly_snprintf_l(buffer, 128, "%%ls: %ls", loc.get(), L"áéíóú");
-        string_view result = buffer;
+        ret = poly_snprintf_l(buffer.data(), 128, "%%ls: %ls", loc.get(), L"áéíóú");
+        string_view result = buffer.c_str();
         CAPTURE(ret);
         REQUIRE(expected == result);
     }
@@ -415,10 +447,22 @@ TEST_CASE("printf tokenizer", "[token][.]")
     using red::polyloc::fmt_tokenizer;
     using std::cout; using std::quoted;
 
-    auto input = "o rato roeu %c roupa do rei de roma %10.5d:%10.5d %o69%x %X lorem ipsum %.2d %.1d%% %"s;
-    fmt_tokenizer tok(input);
 
-    for (fmt_tokenizer::iterator beg = tok.begin(); beg != tok.end(); ++beg) {
-        cout << quoted(*beg) << "\n";
+    auto input = "o rato roeu %c roupa do rei de roma %10.5d:%10.5d %o69%x %X lorem ipsum %.2d %.1d%% %"s;
+    fmt_tokenizer fmt_tok(input);
+    
+    cout << "Tokenizer lab" "\n\n"
+         << "fmt_tokenizer:\n";
+    for (auto& t : fmt_tok) {
+        cout << quoted(t) << ", ";
     }
+
+    boost::char_separator<char> sep{ "%" };
+    boost::tokenizer<boost::char_separator<char>> boost_tok{ input, sep };
+
+    cout << "\n" "boost char_separator('%'):\n";
+    for (auto& t : boost_tok) {
+        cout << quoted(t) << ", ";
+    }
+    cout << '\n';
 }

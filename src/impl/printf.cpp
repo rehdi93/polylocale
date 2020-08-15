@@ -76,13 +76,8 @@ private:
 enum class arg_flags : unsigned short
 {
     none,
-    wide = 1 << 2,
-    narrow = 1<<3,
-    blankpos = 1 << 6,
-
-    altform = 1 << 9, // ios::showbase for ints, ios::showpoint for floats
-
-    sizefield = wide|narrow
+    blankpos = 1 << 0,
+    altform = 1 << 1, 
 };
 
 using arg_variant = std::variant<char, wchar_t, char*, wchar_t*, void*, intmax_t, uintmax_t, long double>;
@@ -108,7 +103,7 @@ class arg_context
             case ' ': // Use a blank to prefix the output value if it is signed and positive, 
                 aflags |= arg_flags::blankpos;
                 break;
-            case '#':
+            case '#': // alt. form: ios::showbase for ints, ios::showpoint for floats
                 aflags |= arg_flags::altform;
                 break;
             case '0':
@@ -139,10 +134,52 @@ class arg_context
         os.precision(fmtspec.precision > 0 ? fmtspec.precision : 0);
     }
 
+    void apply_repr(std::ostream& os)
+    {
+        switch (fmtspec.conversion)
+        {
+        case 'd': case 'i': case 'u': // integers
+            os << std::dec;
+            break;
+        case 'X':
+            os.setf(ios::uppercase);
+        case 'x':
+            os << std::hex;
+            break;
+        case 'o':
+            os << std::oct;
+            break;
+
+        case 'F': // float fixed
+            os.setf(ios::uppercase);
+        case 'f':
+            os << std::fixed;
+            break;
+        case 'E': // float scientific
+            os.setf(ios::uppercase);
+        case 'e':
+            os << std::scientific;
+            break;
+        case 'G': // float default
+            os.setf(ios::uppercase);
+        case 'g':
+            os << std::defaultfloat;
+            break;
+        case 'A': // hexfloat
+            os.setf(ios::uppercase);
+        case 'a':
+            os << std::hexfloat;
+            break;
+        }
+    }
+
     arg_variant get_value()
     {
         using ssize_t = std::make_signed_t<size_t>;
         using uptrdiff_t = std::make_unsigned_t<ptrdiff_t>;
+
+        // apply_fwpr() must be called before this
+        assert(fmtspec.field_width != fmtspec.VAL_VA && fmtspec.precision != fmtspec.VAL_VA);
 
         arg_variant val;
 
@@ -268,30 +305,6 @@ class arg_context
 
     void put_fp(long double number, std::ostream& os) const
     {
-        switch (fmtspec.conversion)
-        {
-        case 'F':
-            os.setf(ios::uppercase);
-        case 'f':
-            os << std::fixed;
-            break;
-        case 'E':
-            os.setf(ios::uppercase);
-        case 'e':
-            os << std::scientific;
-            break;
-        case 'G':
-            os.setf(ios::uppercase);
-        case 'g':
-            os << std::defaultfloat;
-            break;
-        case 'A':
-            os.setf(ios::uppercase);
-        case 'a':
-            os << std::hexfloat;
-            break;
-        }
-
         if (bm::has(aflags, arg_flags::altform)) {
             os.setf(ios::showpoint);
         }
@@ -332,21 +345,6 @@ class arg_context
     template<typename T, class = Integer<T>>
     void put_int(T val, std::ostream& os) const
     {
-        switch (fmtspec.conversion)
-        {
-        case 'd': case 'i': case 'u':
-            os << std::dec;
-            break;
-        case 'X':
-            os.setf(ios::uppercase);
-        case 'x':
-            os << std::hex;
-            break;
-        case 'o':
-            os << std::oct;
-            break;
-        }
-
         if (bm::has(aflags, arg_flags::altform)) {
             os << std::showbase;
         }
@@ -358,7 +356,6 @@ class arg_context
         {
             if (bitmask::has_all(os.flags(), ios::oct | ios::showbase))
             {
-                // for octal, if both the converted value and the precision are ​0​, single ​0​ is written.
                 os << 0;
                 return;
             }
@@ -406,6 +403,7 @@ public:
 
         apply_flags(os);
         apply_fwpr(os);
+        apply_repr(os);
         auto value = get_value();
 
         if (auto ptr = get_if<char>(&value)) {
