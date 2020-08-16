@@ -1,4 +1,9 @@
 // adapted from stb/tests/test_sprintf.c
+#ifdef WIN32
+#define _CRT_SECURE_NO_WARNINGS
+#include <mbctype.h>
+#endif
+
 #include <memory>
 #include <string>
 #include <string_view>
@@ -12,13 +17,6 @@
 #define CATCH_CONFIG_RUNNER
 #include "catch.hpp"
 
-#ifdef WIN32
-#include <mbctype.h>
-#endif
-
-static std::string COMMA_LC, POINT_LC;
-
-
 
 using std::string_view;
 using std::string;
@@ -27,9 +25,10 @@ using std::string;
 static_assert(std::is_same_v<locale_t, poly_locale*>, "locale_t is not poly_locale*");
 #endif // POLYLOC_UNDECORATED
 
-
 using locale_ptr_t = std::unique_ptr<poly_locale, decltype(poly_freelocale)*>;
 locale_ptr_t locale_ptr(poly_locale* ploc) { return locale_ptr_t(ploc, poly_freelocale); }
+
+static std::string COMMA_LC, POINT_LC;
 
 std::array locs_virgula_decimal{
     "pt_BR", "pt_BR.utf8",
@@ -52,13 +51,10 @@ static auto find_num_locale(char dp) -> std::string
     using std::locale; using std::use_facet; 
     using std::numpunct; using std::clog;
 
-    clog << '[' << __func__ << "] " << "looking for a locale with decimal '"<<dp<<"'";
-
     auto userlc = locale{ "" };
     if (use_facet<numpunct<char>>(userlc).decimal_point() == dp)
     {
         auto n = userlc.name();
-        clog << " - " << std::quoted(n) << " found.\n";
         return n;
     }
 
@@ -78,21 +74,16 @@ static auto find_num_locale(char dp) -> std::string
         try
         {
             locale l{ name };
-            clog << " - " << std::quoted(name) << " found.\n";
             return name;
-        }
-        catch (const std::runtime_error&)
-        {
-            // not supported
         }
         catch (const std::exception& e)
         {
-            clog << " - " "Unknown error: " << std::quoted(e.what()) << '\n';
-            std::exit(99);
+            clog << e.what() << '\n';
         }
     }
 
-    clog << " - " "No locale found. D:\n";
+    // none found
+    clog << "No locale found with decimal '" << dp << "'.\n";
     exit(42);
 }
 
@@ -106,7 +97,6 @@ static void init_locales()
         if (auto env = getenv("POINT_LC")) {
             POINT_LC = env;
             auto l = locale(POINT_LC);
-            clog << "POINT_LC=" << POINT_LC << "\n";
         }
     }
     catch (const std::exception& e)
@@ -120,7 +110,6 @@ static void init_locales()
         if (auto env = getenv("COMMA_LC")) {
             COMMA_LC = env;
             auto l = locale(COMMA_LC);
-            clog << "COMMA_LC=" << COMMA_LC << "\n";
         }
     }
     catch (const std::exception& e)
@@ -136,6 +125,9 @@ static void init_locales()
     {
         POINT_LC = find_num_locale('.');
     }
+
+    clog << "COMMA_LC=" << COMMA_LC << "\n";
+    clog << "POINT_LC=" << POINT_LC << "\n";
 }
 
 int main(int argc, char* argv[]) {
@@ -260,9 +252,9 @@ TEST_CASE("Formating floating point", "[sprintf][format]")
 }
 
 TEST_CASE("(new|free|dup)locale", "[polyC]") {
-    string_view locname = "C";
+    string locname = "C";
 
-    auto ploc = poly_newlocale(POLY_ALL_MASK, locname.data(), NULL);
+    auto ploc = poly_newlocale(POLY_ALL_MASK, locname.c_str(), NULL);
     REQUIRE(polyloc_getname(ploc) == locname);
 
     auto ploc_copy = poly_duplocale(ploc);

@@ -82,12 +82,11 @@ bool isfmtchar(char ch, bool digits)
 
 
 bool fmt_separator::operator() (iterator& next, iterator end, std::string& token) {
-    auto start = next;
-    bool in_fmt = false;
+    auto const start = next;
 
     if (start == end)
         return false;
-    
+
     if (*start == FMT_START)
     {
         if (std::next(start) == end)
@@ -101,30 +100,11 @@ bool fmt_separator::operator() (iterator& next, iterator end, std::string& token
         }
         else {
             // possible printf fmt
-            in_fmt = true;
+            // "%# +o| %#o" "%10.5d|:%10.5d"
+            auto fmtend = find_if(next, end, isfmttype);
+            next = fmtend != end ? fmtend + 1 : end;
+            token.assign(start, next);
         }
-    }
-
-    if (in_fmt)
-    {
-        // "%# +o| %#o" "%10.5d|:%10.5d"
-        ptrdiff_t offs = 1;
-        next++;
-        auto fmtend = std::adjacent_find(next, end, [&](char l, char r) mutable {
-            if (isfmttype(l)) {
-                return true;
-            }
-            if (isfmtchar(l) && isfmttype(r)) {
-                offs = 2;
-                return true;
-            }
-            return false;
-        });
-
-        offs = std::min(distance(fmtend, end), offs);
-        next = fmtend + offs;
-
-        token.assign(start, next);
     }
     else
     {
