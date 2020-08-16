@@ -134,7 +134,7 @@ class arg_context
         os.precision(fmtspec.precision > 0 ? fmtspec.precision : 0);
     }
 
-    void apply_repr(std::ostream& os)
+    void apply_repr(std::ostream& os) const
     {
         switch (fmtspec.conversion)
         {
@@ -173,7 +173,7 @@ class arg_context
         }
     }
 
-    arg_variant get_value()
+    arg_variant get_value() const
     {
         using ssize_t = std::make_signed_t<size_t>;
         using uptrdiff_t = std::make_unsigned_t<ptrdiff_t>;

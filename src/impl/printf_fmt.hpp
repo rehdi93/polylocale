@@ -5,10 +5,10 @@
 
 namespace red::polyloc
 {
-    bool isfmtflag(char ch, bool zero = true, bool space = true);
+    bool isfmtflag(char ch);
     bool isfmttype(char ch);
     bool isfmtlength(char ch);
-    bool isfmtchar(char ch, bool digits = true);
+    bool isfmtchar(char ch);
 
     struct fmt_separator
     {
@@ -34,8 +34,11 @@ namespace red::polyloc
         int field_width = VAL_AUTO, precision = VAL_AUTO;
         char conversion = '\030';
 
-        bool valid() const noexcept {
-            return isfmttype(conversion);
+        bool valid() const noexcept;
+
+    private:
+        constexpr bool isValidNum(int n) const {
+            return n == VAL_AUTO || n == VAL_VA || n >= 0;
         }
     };
 

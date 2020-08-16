@@ -44,21 +44,10 @@ using std::find;
 
 namespace red::polyloc {
 
-bool isfmtflag(char ch, bool zero, bool space)
+bool isfmtflag(char ch)
 {
-    auto end_ = end(FMT_FLAGS);
-    auto it = find(begin(FMT_FLAGS), end_, ch);
-
-    if (it != end_)
-    {
-        if (*it == '0')
-            return zero;
-        else if (*it == ' ')
-            return space;
-        else
-            return true;
-    }
-    else return false;
+    auto const e = end(FMT_FLAGS);
+    return find(begin(FMT_FLAGS), e, ch) != e;
 }
 
 bool isfmttype(char ch)
@@ -73,20 +62,20 @@ bool isfmtlength(char ch)
     return find(begin(FMT_LENGTHMOD), e, ch) != e;
 }
 
-bool isfmtchar(char ch, bool digits)
+bool isfmtchar(char ch)
 {
     return ch==FMT_PRECISION || ch==FMT_FROM_VA || ch==FMT_START ||
-        isfmtflag(ch, digits) || isfmtlength(ch) || isfmttype(ch)
-        || (digits && isdigit(ch, std::locale::classic()));
+        isfmtflag(ch) || isfmtlength(ch) || isfmttype(ch)
+        || isdigit(ch, std::locale::classic());
 }
 
 
 bool fmt_separator::operator() (iterator& next, iterator end, std::string& token) {
-    auto const start = next;
+    auto start = next;
 
     if (start == end)
         return false;
-
+    
     if (*start == FMT_START)
     {
         if (std::next(start) == end)
@@ -115,6 +104,13 @@ bool fmt_separator::operator() (iterator& next, iterator end, std::string& token
     return true;
 }
 
+bool fmtspec_t::valid() const noexcept
+{
+    return isfmttype(conversion) &&
+        isValidNum(field_width) && isValidNum(precision) &&
+        all_of(flags.begin(), flags.end(), isfmtflag) &&
+        all_of(length_mod.begin(), length_mod.end(), isfmtlength);
+}
 
 fmtspec_t parsefmt(std::string const& spec)
 {
