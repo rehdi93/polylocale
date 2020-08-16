@@ -75,7 +75,7 @@ bool isfmtlength(char ch)
 
 bool isfmtchar(char ch, bool digits)
 {
-    return ch == FMT_PRECISION || ch == FMT_FROM_VA ||
+    return ch==FMT_PRECISION || ch==FMT_FROM_VA || ch==FMT_START ||
         isfmtflag(ch, digits) || isfmtlength(ch) || isfmttype(ch)
         || (digits && isdigit(ch, std::locale::classic()));
 }
