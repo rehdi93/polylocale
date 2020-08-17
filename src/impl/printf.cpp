@@ -68,10 +68,12 @@ enum class arg_flags : unsigned short
 {
     none,
     blankpos = 1 << 0,
-    altform = 1 << 1, 
+    altform = 1 << 1,
+    narrow = 1<<2,
+    wide = 1<<3
 };
 
-using arg_variant = std::variant<char, wchar_t, char*, wchar_t*, void*, intmax_t, uintmax_t, long double>;
+using arg_variant = std::variant<char, wchar_t, char*, wchar_t*, void*, int64_t, uint64_t, long double>;
 
 class arg_context
 {
@@ -125,7 +127,7 @@ class arg_context
         os.precision(fmtspec.precision > 0 ? fmtspec.precision : 0);
     }
 
-    void apply_repr(std::ostream& os) const
+    void apply_repr(std::ostream& os)
     {
         switch (fmtspec.conversion)
         {
@@ -161,24 +163,70 @@ class arg_context
         case 'a':
             os << std::hexfloat;
             break;
+        
+        case 'C': case 'S': // special case for wide char and strings
+            aflags |= arg_flags::wide;
+            break;
+        }
+
+        // handle size overrides
+        if (!fmtspec.length_mod.empty())
+        {
+            if (fmtspec.length_mod == "h") {
+                // halfwidth
+                // not used, but keep track of it
+                aflags |= arg_flags::narrow;
+            }
+            else if (fmtspec.length_mod == "hh") {
+                // quarterwidth
+                // ignore
+            }
+            // are we 64-bit (unix style)
+            else if (fmtspec.length_mod == "l") {
+                switch (fmtspec.conversion)
+                {
+                case 'c': case 's':
+                    aflags |= arg_flags::wide;
+                    break;
+                default:
+                    if (sizeof(long) == 8)
+                        aflags |= arg_flags::wide;
+                    break;
+                }
+            }
+            else if (fmtspec.length_mod == "ll") {
+                aflags |= arg_flags::wide;
+            }
+            // are we 64-bit on intmax_t? (c99)
+            else if (fmtspec.length_mod == "j") {
+                if (sizeof(intmax_t) == 8)
+                    aflags |= arg_flags::wide;
+            }
+            // are we 64-bit on size_t or ptrdiff_t? (c99)
+            else if (fmtspec.length_mod == "z" || fmtspec.length_mod == "t") {
+                if (sizeof(ptrdiff_t) == 8)
+                    aflags |= arg_flags::wide;
+            }
+            // are we 64-bit (msft style)
+            else if (fmtspec.length_mod == "I64") {
+                aflags |= arg_flags::wide;
+            }
+            else if (fmtspec.length_mod == "I32") {
+                if (sizeof(void*) == 8)
+                    aflags |= arg_flags::wide;
+            }
         }
     }
 
     arg_variant get_value() const
     {
-        using ssize_t = std::make_signed_t<size_t>;
-        using uptrdiff_t = std::make_unsigned_t<ptrdiff_t>;
-
-        // apply_fwpr() must be called before this
-        assert(fmtspec.field_width != fmtspec.VAL_VA && fmtspec.precision != fmtspec.VAL_VA);
-
         arg_variant val;
 
         switch (fmtspec.conversion)
         {
         case 'C': // chars
         case 'c':
-            if (fmtspec.length_mod == "l" || fmtspec.conversion == 'C') {
+            if (bm::has(aflags, arg_flags::wide)) {
                 auto arg = va_arg(*va, wint_t);
                 val = (wchar_t)arg;
             }
@@ -190,7 +238,7 @@ class arg_context
 
         case 'S': // strings
         case 's':
-            if (fmtspec.length_mod == "l" || fmtspec.conversion == 'S') {
+            if (bm::has(aflags, arg_flags::wide)) {
                 val = va_arg(*va, wchar_t*);
             }
             else {
@@ -200,74 +248,30 @@ class arg_context
 
         case 'd': // integers
         case 'i':
-            if (fmtspec.length_mod == "h") {
-                auto arg = va_arg(*va, signed char);
-                val = intmax_t(arg);
+        {
+            if (bm::has(aflags, arg_flags::wide))
+            {
+                val = va_arg(*va, int64_t);
             }
-            else if (fmtspec.length_mod == "hh") {
-                auto arg = va_arg(*va, short);
-                val = intmax_t(arg);
+            else
+            {
+                val = (int64_t) va_arg(*va, int32_t);
             }
-            else if (fmtspec.length_mod == "l") {
-                auto arg = va_arg(*va, long);
-                val = intmax_t(arg);
-            }
-            else if (fmtspec.length_mod == "ll") {
-                auto arg = va_arg(*va, long long);
-                val = intmax_t(arg);
-            }
-            else if (fmtspec.length_mod == "j" || fmtspec.length_mod == "I64") {
-                val = va_arg(*va, intmax_t);
-            }
-            else if (fmtspec.length_mod == "z") {
-                auto arg = va_arg(*va, ssize_t);
-                val = intmax_t(arg);
-            }
-            else if (fmtspec.length_mod == "t") {
-                auto arg = va_arg(*va, ptrdiff_t);
-                val = intmax_t(arg);
-            }
-            else {
-                auto arg = va_arg(*va, int);
-                val = intmax_t(arg);
-            }
-            break;
+        } break;
 
         case 'u': // unsigned integers
         case 'o':
         case 'X': case 'x':
-            if (fmtspec.length_mod == "h") {
-                auto arg = va_arg(*va, unsigned char);
-                val = uintmax_t(arg);
+        {
+            if (bm::has(aflags, arg_flags::wide))
+            {
+                val = va_arg(*va, uint64_t);
             }
-            else if (fmtspec.length_mod == "hh") {
-                auto arg = va_arg(*va, unsigned short);
-                val = uintmax_t(arg);
+            else
+            {
+                val = (uint64_t)va_arg(*va, uint32_t);
             }
-            else if (fmtspec.length_mod == "l") {
-                auto arg = va_arg(*va, unsigned long);
-                val = uintmax_t(arg);
-            }
-            else if (fmtspec.length_mod == "ll") {
-                auto arg = va_arg(*va, unsigned long long);
-                val = uintmax_t(arg);
-            }
-            else if (fmtspec.length_mod == "j" || fmtspec.length_mod == "I64") {
-                val = va_arg(*va, uintmax_t);
-            }
-            else if (fmtspec.length_mod == "z") {
-                auto arg = va_arg(*va, size_t);
-                val = uintmax_t(arg);
-            }
-            else if (fmtspec.length_mod == "t") {
-                auto arg = va_arg(*va, uptrdiff_t);
-                val = uintmax_t(arg);
-            }
-            else {
-                auto arg = va_arg(*va, unsigned);
-                val = uintmax_t(arg);
-            }
-            break;
+        } break;
             
         case 'E': case 'e': // floating point
         case 'F': case 'f':
@@ -286,7 +290,6 @@ class arg_context
             val = va_arg(*va, void*);
             break;
 
-        case 'n':
         default:
             break;
         }
@@ -412,10 +415,10 @@ public:
         else if (auto ptr = get_if<void*>(&value)) {
             os << std::hex << ptr;
         }
-        else if (auto ptr = get_if<intmax_t>(&value)) {
+        else if (auto ptr = get_if<int64_t>(&value)) {
             put_int(*ptr, os);
         }
-        else if (auto ptr = get_if<uintmax_t>(&value)) {
+        else if (auto ptr = get_if<uint64_t>(&value)) {
             put_int(*ptr, os);
         }
         else if (auto ptr = get_if<long double>(&value)) {
@@ -467,7 +470,7 @@ int red::polyloc::do_printf(string_view fmt, std::ostream& outs, va_list args)
 
     for (auto& tok : toknz)
     {
-        if (tok.size() >= 2 && isfmtchar(tok[0]))
+        if (tok.size() >= 2 && tok[0]=='%')
         {
             auto fmtspec = parsefmt(tok);
             arg_context ctx{ fmtspec, &va };

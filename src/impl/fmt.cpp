@@ -90,7 +90,7 @@ bool fmt_separator::operator() (iterator& next, iterator end, std::string& token
         else {
             // possible printf fmt
             // "%# +o| %#o" "%10.5d|:%10.5d"
-            auto fmtend = find_if(next, end, isfmttype);
+            auto fmtend = std::find_if(next, end, isfmttype);
             next = fmtend != end ? fmtend + 1 : end;
             token.assign(start, next);
         }
@@ -108,8 +108,8 @@ bool fmtspec_t::valid() const noexcept
 {
     return isfmttype(conversion) &&
         isValidNum(field_width) && isValidNum(precision) &&
-        all_of(flags.begin(), flags.end(), isfmtflag) &&
-        all_of(length_mod.begin(), length_mod.end(), isfmtlength);
+        std::all_of(flags.begin(), flags.end(), isfmtflag) &&
+        std::all_of(length_mod.begin(), length_mod.end(), isfmtlength);
 }
 
 fmtspec_t parsefmt(std::string const& spec)
