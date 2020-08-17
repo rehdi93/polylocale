@@ -24,7 +24,7 @@ constexpr char FMT_PRECISION = '.';
 constexpr char FMT_FROM_VA = '*';
 
 // format specifier regex
-// https://regex101.com/r/Imw6fT/1
+// https://regex101.com/r/Imw6fT/2
 constexpr auto FMT_PATTERN = "%"
     "([" CH_FLAGS "]+)?"
     "(" R"([0-9]+|\*)" ")?" // field width
@@ -44,19 +44,19 @@ using std::find;
 
 namespace red::polyloc {
 
-bool isfmtflag(char ch)
+bool isfmtflag(char ch) noexcept
 {
     auto const e = end(FMT_FLAGS);
     return find(begin(FMT_FLAGS), e, ch) != e;
 }
 
-bool isfmttype(char ch)
+bool isfmttype(char ch) noexcept
 {
     auto const e = end(FMT_TYPES);
     return find(begin(FMT_TYPES), e, ch) != e;
 }
 
-bool isfmtlength(char ch)
+bool isfmtlength(char ch) noexcept
 {
     auto const e = end(FMT_LENGTHMOD);
     return find(begin(FMT_LENGTHMOD), e, ch) != e;

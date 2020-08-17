@@ -5,9 +5,9 @@
 
 namespace red::polyloc
 {
-    bool isfmtflag(char ch);
-    bool isfmttype(char ch);
-    bool isfmtlength(char ch);
+    bool isfmtflag(char ch) noexcept;
+    bool isfmttype(char ch) noexcept;
+    bool isfmtlength(char ch) noexcept;
     bool isfmtchar(char ch);
 
     struct fmt_separator

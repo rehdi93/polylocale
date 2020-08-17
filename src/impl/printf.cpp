@@ -1,10 +1,10 @@
-﻿// disable deprication warning about wstring_convert
-/*
+﻿/*
+  Disable deprication warning about wstring_convert.
+ 
   I could use a 3rd-party lib like Boost.Locale, but those usualy accept only a subset of locale
   names like "en_US", "pt_BR.UTF-8"... OR they don't know the fact that MSVC now supports
   utf8 locales https://github.com/MicrosoftDocs/cpp-docs/issues/1469
 */
-
 // MSVC
 #define _SILENCE_CXX17_CODECVT_HEADER_DEPRECATION_WARNING
 
@@ -34,15 +34,6 @@ using namespace bitmask::ops;
 // HELPERS
 namespace
 {
-
-struct va_deleter
-{
-    using pointer = va_list*;
-
-    void operator () (pointer va) const {
-        va_end(*va);
-    }
-};
 
 // utility wrapper to adapt locale-bound facets for wstring/wbuffer convert
 template<class Facet>
@@ -455,9 +446,18 @@ int red::polyloc::do_printf(string_view fmt, std::ostream& outs, va_list args)
         return 0;
 
 #ifdef __GNUC__
+    struct VaListGuard
+    {
+        va_list *pva;
+
+        ~VaListGuard() {
+            va_end(*pva);
+        }
+    };
+
     va_list va;
     va_copy(va, args);
-    auto _g_ = std::unique_ptr<va_list, va_deleter>(&va);
+    auto _g_ = VaListGuard{ &va };
 #else
     auto va = args;
 #endif // __GNUC__
@@ -467,7 +467,7 @@ int red::polyloc::do_printf(string_view fmt, std::ostream& outs, va_list args)
 
     for (auto& tok : toknz)
     {
-        if (tok.size() >= 2 && tok[0] == '%')
+        if (tok.size() >= 2 && isfmtchar(tok[0]))
         {
             auto fmtspec = parsefmt(tok);
             arg_context ctx{ fmtspec, &va };
