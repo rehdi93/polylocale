@@ -11,6 +11,7 @@
 #include "printf.hpp"
 #include "printf_fmt.hpp"
 #include "bitmask.hpp"
+#include "fmtdefs.h"
 
 #include "boost/io/ios_state.hpp"
 #include "boost/iostreams/filter/counter.hpp"
@@ -385,14 +386,6 @@ public:
 
     auto put(std::ostream& os)
     {
-        if (!fmtspec.valid())
-        {
-            // invalid format
-            red::string_view invalid = fmtspec.fmt;
-            os << invalid.substr(1);
-            return;
-        }
-
         using std::get_if;
         ios_saver<char> _g_(os);
 
@@ -477,11 +470,17 @@ int red::polyloc::do_printf(string_view fmt, std::ostream& outs, va_list args)
 
     for (auto& tok : toknz)
     {
-        if (tok.size() >= 2 && tok[0]=='%')
+        if (tok.size() >= 2 && tok[0] == FMT::Start)
         {
             auto fmtspec = parsefmt(tok);
-            arg_context ctx{ fmtspec, &va };
-            fo << ctx;
+            if (fmtspec.error) {
+                // invalid format
+                fo << fmtspec.fmt.substr(1);
+            }
+            else {
+                arg_context ctx{ fmtspec, &va };
+                fo << ctx;
+            }
         }
         else
         {

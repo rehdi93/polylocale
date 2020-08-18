@@ -5,39 +5,7 @@
 #include <locale>
 #include <regex>
 
-
-namespace
-{
-
-#define CH_FLAGS "-+#0 "
-#define CH_TYPES "CcudioXxEeFfGgAapSsn"
-
-constexpr char FMT_START = '%';
-constexpr char FMT_LENGTHMOD[] = "hljztLI";
-#define RX_LENGTHMOD             "h|hh|l|ll|j|z|t|L|I32|I64"
-constexpr char FMT_FLAGS[] = CH_FLAGS;
-constexpr char FMT_TYPES[] = CH_TYPES;
-
-// precision
-constexpr char FMT_PRECISION = '.';
-// value from VA
-constexpr char FMT_FROM_VA = '*';
-
-// format specifier regex
-// https://regex101.com/r/Imw6fT/2
-constexpr auto FMT_PATTERN = "%"
-    "([" CH_FLAGS "]+)?"
-    "(" R"([0-9]+|\*)" ")?" // field width
-    "(" R"(\.[0-9]+|\.\*)" ")?" // precision
-    "(" RX_LENGTHMOD ")?"
-    "([" CH_TYPES "])";
-
-
-#undef CH_FLAGS
-#undef CH_TYPES
-#undef RX_LENGTHMOD
-
-} // unnamed namespace
+#include "fmtdefs.h"
 
 using std::begin; using std::end;
 using std::find;
@@ -46,25 +14,25 @@ namespace red::polyloc {
 
 bool isfmtflag(char ch) noexcept
 {
-    auto const e = end(FMT_FLAGS);
-    return find(begin(FMT_FLAGS), e, ch) != e;
+    auto const e = end(FMT::Flags);
+    return find(begin(FMT::Flags), e, ch) != e;
 }
 
 bool isfmttype(char ch) noexcept
 {
-    auto const e = end(FMT_TYPES);
-    return find(begin(FMT_TYPES), e, ch) != e;
+    auto const e = end(FMT::Types);
+    return find(begin(FMT::Types), e, ch) != e;
 }
 
 bool isfmtlength(char ch) noexcept
 {
-    auto const e = end(FMT_LENGTHMOD);
-    return find(begin(FMT_LENGTHMOD), e, ch) != e;
+    auto const e = end(FMT::Length);
+    return find(begin(FMT::Length), e, ch) != e;
 }
 
 bool isfmtchar(char ch)
 {
-    return ch==FMT_PRECISION || ch==FMT_FROM_VA || ch==FMT_START ||
+    return ch==FMT::Precision || ch==FMT::FromVa || ch==FMT::Start ||
         isfmtflag(ch) || isfmtlength(ch) || isfmttype(ch)
         || isdigit(ch, std::locale::classic());
 }
@@ -72,18 +40,17 @@ bool isfmtchar(char ch)
 
 bool fmt_separator::operator() (iterator& next, iterator end, std::string& token) {
     auto start = next;
-
     if (start == end)
         return false;
     
-    if (*start == FMT_START)
+    if (*start == FMT::Start)
     {
         if (std::next(start) == end)
             return false;
 
-        if (*std::next(start) == FMT_START) {
+        if (*std::next(start) == FMT::Start) {
             // escaped %
-            token.assign(1, FMT_START);
+            token.assign(1, FMT::Start);
             next += 2;
             return true;
         }
@@ -93,30 +60,23 @@ bool fmt_separator::operator() (iterator& next, iterator end, std::string& token
             auto fmtend = std::find_if(next, end, isfmttype);
             next = fmtend != end ? fmtend + 1 : end;
             token.assign(start, next);
+            return true;
         }
     }
     else
     {
-        next = find(start, end, FMT_START);
+        next = find(start, end, FMT::Start);
         token.assign(start, next);
+        return true;
     }
-
-    return true;
 }
 
-bool fmtspec_t::valid() const noexcept
-{
-    return isfmttype(conversion) &&
-        isValidNum(field_width) && isValidNum(precision) &&
-        std::all_of(flags.begin(), flags.end(), isfmtflag) &&
-        std::all_of(length_mod.begin(), length_mod.end(), isfmtlength);
-}
 
 fmtspec_t parsefmt(std::string const& spec)
 {
     using red::string_view;
 
-    const std::regex rx{ FMT_PATTERN };
+    const std::regex rx{ FMT::Pattern };
     enum match_groups : size_t {
         FullMatch,
         Flags, FieldWidth, Precision, LengthMod, Type
@@ -130,7 +90,7 @@ fmtspec_t parsefmt(std::string const& spec)
         fmtspec.conversion = *matches[Type].first;
         //const auto start = std::addressof(*matches[FullMatch].first);
 
-        const auto start = spec.data();
+        const auto start = spec.c_str();
 
         if (matches[Flags].matched) {
             auto ptr = start + matches.position(Flags);
@@ -144,7 +104,7 @@ fmtspec_t parsefmt(std::string const& spec)
         if (matches[FieldWidth].matched) {
             auto ptr = start + matches.position(FieldWidth);
 
-            if (*ptr == FMT_FROM_VA) {
+            if (*ptr == FMT::FromVa) {
                 fmtspec.field_width = fmtspec.VAL_VA;
             }
             else try {
@@ -158,7 +118,7 @@ fmtspec_t parsefmt(std::string const& spec)
         if (matches[Precision].matched) {
             auto ptr = start + matches.position(Precision) + 1 /* skip '.' */;
 
-            if (*ptr == FMT_FROM_VA) {
+            if (*ptr == FMT::FromVa) {
                 fmtspec.precision = fmtspec.VAL_VA;
             }
             else try {
@@ -169,7 +129,10 @@ fmtspec_t parsefmt(std::string const& spec)
                 // no conversion took place
             }
         }
-
+    }
+    else
+    {
+        fmtspec.error = true;
     }
 
     return fmtspec;
