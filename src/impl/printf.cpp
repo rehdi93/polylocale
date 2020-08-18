@@ -1,6 +1,6 @@
 ﻿/*
   Disable deprication warning about wstring_convert.
- 
+
   I could use a 3rd-party lib like Boost.Locale, but those usualy accept only a subset of locale
   names like "en_US", "pt_BR.UTF-8"... OR they don't know the fact that MSVC now supports
   utf8 locales https://github.com/MicrosoftDocs/cpp-docs/issues/1469
@@ -11,7 +11,10 @@
 #include "printf.hpp"
 #include "printf_fmt.hpp"
 #include "bitmask.hpp"
-#include <boost/io/ios_state.hpp>
+
+#include "boost/io/ios_state.hpp"
+#include "boost/iostreams/filter/counter.hpp"
+#include "boost/iostreams/filtering_stream.hpp"
 
 #include <sstream>
 #include <iomanip>
@@ -30,6 +33,7 @@ using red::polyloc::fmtspec_t;
 namespace bm = bitmask;
 using namespace std::literals;
 using namespace bitmask::ops;
+namespace io = boost::iostreams;
 
 // HELPERS
 namespace
@@ -326,11 +330,9 @@ class arg_context
 
     void put_str(red::string_view str, std::ostream& os) const {
         if (fmtspec.precision > 0)
-        {
-            str = str.substr(0, fmtspec.precision);
-        }
-
-        os << str;
+            os << str.substr(0, fmtspec.precision);
+        else
+            os << str;
     }
 
     template<class I>
@@ -377,7 +379,6 @@ class arg_context
         os << val;
     }
 
-    
 public:
     arg_context(fmtspec_t fmts, va_list* pva) : fmtspec(fmts), va(pva)
     {}
@@ -465,6 +466,12 @@ int red::polyloc::do_printf(string_view fmt, std::ostream& outs, va_list args)
     auto va = args;
 #endif // __GNUC__
 
+    io::counter cnt;
+    io::filtering_ostream fo;
+    fo.push(boost::ref(cnt));
+    fo.push(outs);
+    fo.copyfmt(outs);
+
     auto format = std::string(fmt);
     fmt_tokenizer toknz{ format };
 
@@ -474,15 +481,15 @@ int red::polyloc::do_printf(string_view fmt, std::ostream& outs, va_list args)
         {
             auto fmtspec = parsefmt(tok);
             arg_context ctx{ fmtspec, &va };
-            outs << ctx;
+            fo << ctx;
         }
         else
         {
-            outs << tok;
+            fo << tok;
         }
     }
 
-    return outs.tellp();
+    return cnt.characters();
 }
 
 
