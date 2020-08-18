@@ -25,13 +25,6 @@ namespace red
     using boost::basic_string_view;
 #endif
 
-namespace io
-{
-    using namespace boost::iostreams;
-
-    using array_read_buf = stream_buffer< array_source >;
-    using array_buf = stream_buffer<array>;
-}
 
     // string_view to long
     template <class StrView>

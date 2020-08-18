@@ -11,6 +11,7 @@
 #include "impl/printf.hpp"
 #include "impl/polyimpl.h"
 
+
 #ifdef __GNUC__
 #include <ext/stdio_filebuf.h>
 #endif
@@ -70,6 +71,33 @@ static auto mask_to_cat(int mask) noexcept -> std::locale::category
 
     return cat;
 }
+
+// helpers
+namespace io = boost::iostreams;
+
+template<typename Char>
+class unbound_sink
+{
+public:
+    using char_type = Char;
+    using category = io::sink_tag;
+
+    explicit unbound_sink(char_type* begin) : cur_(begin)
+    {}
+
+    std::streamsize write(const char_type* s, std::streamsize n)
+    {
+        cur_ = std::copy_n(s, n, cur_);
+        return n;
+    }
+
+private:
+    char_type* cur_;
+};
+
+using unsafe_buf = io::stream_buffer<unbound_sink<char>>;
+using array_buf = io::stream_buffer<io::array>;
+
 
 extern "C" {
 
@@ -214,13 +242,13 @@ int poly_sprintf_l(char* buffer, const char* fmt, poly_locale_t loc, ...)
     return result;
 }
 
+
 int poly_vsprintf_l(char* buffer, const char* fmt, poly_locale_t loc, va_list args)
 {
-    std::ostringstream tmp;
-    red::polyloc::do_printf(fmt, tmp, getloc(loc), args);
-    auto contents = tmp.str();
-    int result = contents.copy(buffer, contents.size());
-    buffer[contents.size()] = '\0';
+    unsafe_buf sink{ buffer };
+    std::ostream os(&sink);
+    auto result = red::polyloc::do_printf(fmt, os, getloc(loc), args);
+    os.put('\0');
     return result;
 }
 
@@ -238,7 +266,7 @@ int poly_snprintf_l(char* buffer, size_t count, const char* format, poly_locale_
 
 int poly_vsnprintf_l(char* buffer, size_t count, const char* fmt, poly_locale_t ploc, va_list args)
 {
-    red::io::array_buf outputBuf (buffer, count);
+    array_buf outputBuf (buffer, count);
     std::ostream outs(&outputBuf);
 
     auto result = red::polyloc::do_printf(fmt, outs, count, getloc(ploc), args);
