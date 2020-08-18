@@ -146,7 +146,7 @@ int main(int argc, char* argv[]) {
 
 
 
-struct sprintf_test_result
+struct printf_test_result
 {
     std::string expected, result, format;
     int returnValue;
@@ -154,7 +154,7 @@ struct sprintf_test_result
 
 
 template<typename ...VA>
-sprintf_test_result do_test_sprintf(std::string expected, char* buf, size_t count, std::string fmt, poly_locale_t loc, VA... rest)
+printf_test_result do_test_sprintf(std::string expected, char* buf, size_t count, std::string fmt, poly_locale_t loc, VA... rest)
 {
     int ret;
     auto dbgfmt = fmt.c_str();
@@ -171,6 +171,7 @@ sprintf_test_result do_test_sprintf(std::string expected, char* buf, size_t coun
         expected, buf, fmt, ret
     };
 }
+
 
 #define TEST_FMT_BASE(expected_, fmt, buffer, count, locp, ...) SECTION(#fmt " --> " #expected_) { \
     auto* VA_ARGS = #__VA_ARGS__; \
@@ -311,12 +312,7 @@ TEST_CASE("snprintf_l tests", "[snprintf]") {
     FMT_VARS("C", 1024);
     const double pow_2_75 = 37778931862957161709568.0;
 
-    SECTION(R"(" %s     %d" --> " b     123")")
-    {
-        auto tr = do_test_sprintf(" b     123", buffer.data(), 100, " %s     %d", loc.get(), "b", 123);
-        CAPTURE(tr.expected, tr.result, tr.format, tr.returnValue);
-        REQUIRE(tr.expected == tr.result);
-    }
+    TEST_FMT(" b     123", " %s     %d", "b", 123);
 
     SECTION("Large float") {
         auto tr = do_test_sprintf("37778931862957161709568.000000", buffer.data(), 100, "%f", loc.get(), pow_2_75);
@@ -418,6 +414,16 @@ TEST_CASE("Wide strings", "[wide]")
         REQUIRE(expected == result);
     }
 
+}
+
+TEST_CASE("printf (cout)", "[printf][.]")
+{
+    auto loc = locale_ptr(poly_newlocale(POLY_ALL_MASK, "C", NULL));
+    auto expected = "Lorem ipsum dolor sit amet, consectetur adipiscing elit.\n"sv;
+    auto fmt = "Lorem ipsum %s sit amet, %s adipiscing %s.\n";
+    
+    auto result = poly_printf_l(fmt, loc.get(), "dolor", "consectetur", "elit");
+    REQUIRE(result == expected.size());
 }
 
 

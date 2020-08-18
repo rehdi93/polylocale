@@ -10,6 +10,8 @@
 #include "polylocale.h"
 #include "impl/printf.hpp"
 #include "impl/polyimpl.h"
+#include <boost/iostreams/stream_buffer.hpp>
+#include <boost/iostreams/device/array.hpp>
 
 
 #ifdef __GNUC__
@@ -221,11 +223,7 @@ int poly_printf_l(const char* fmt, poly_locale_t locale, ...)
 
 int poly_vprintf_l(const char* fmt, poly_locale_t locale, va_list args)
 {
-    std::ostringstream tmp;
-    red::polyloc::do_printf(fmt, tmp, getloc(locale), args);
-    auto contents = tmp.str();
-    auto result = (int)contents.size();
-    std::cout << contents;
+    auto result = red::polyloc::do_printf(fmt, std::cout, getloc(locale), args);
     return result;
 }
 
