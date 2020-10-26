@@ -12,15 +12,15 @@ namespace red::polyloc
 
     struct fmt_separator
     {
-        using iterator = std::string::const_iterator;
+        using iterator = red::string_view::iterator;
 
-        bool operator() (iterator& next, iterator end, std::string& token);
-        void reset() { }
+        bool operator() (iterator& next, iterator end, red::string_view& token);
+        void reset() {}
 
     private:
     };
 
-    using fmt_tokenizer = boost::tokenizer<fmt_separator, fmt_separator::iterator>;
+    using fmt_tokenizer = boost::tokenizer<fmt_separator, fmt_separator::iterator, red::string_view>;
 
     // %[flags][width][.precision][size]type
     struct fmtspec_t
@@ -37,5 +37,5 @@ namespace red::polyloc
         bool error = false;
     };
 
-    fmtspec_t parsefmt(std::string const& spec);
+    fmtspec_t parsefmt(red::string_view spec);
 }

@@ -35,4 +35,3 @@ namespace FMT {
 #undef FMT_INTEGER
 #undef FMT_FLOATING_PT
 #undef FMT_LENGTHMOD
-

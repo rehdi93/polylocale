@@ -10,6 +10,17 @@
 using std::begin; using std::end;
 using std::find;
 
+using red::string_view;
+using std::string;
+
+static void assign_sv(string_view& sv, string_view::iterator begin_it, string_view::iterator end_it)
+{
+    auto* begin = std::addressof(*begin_it);
+    auto dist = std::distance(begin_it, end_it);
+    assert(dist > 0);
+    sv = { begin, size_t(dist) };
+}
+
 namespace red::polyloc {
 
 bool isfmtflag(char ch) noexcept
@@ -38,7 +49,7 @@ bool isfmtchar(char ch)
 }
 
 
-bool fmt_separator::operator() (iterator& next, iterator end, std::string& token) {
+bool fmt_separator::operator() (iterator& next, iterator end, red::string_view& token) {
     auto start = next;
     if (start == end)
         return false;
@@ -50,7 +61,9 @@ bool fmt_separator::operator() (iterator& next, iterator end, std::string& token
 
         if (*std::next(start) == FMT::Start) {
             // escaped %
-            token.assign(1, FMT::Start);
+            //token.assign(1, FMT::Start);
+            auto& ch = *std::next(start);
+            token = { &ch, 1 };
             next += 2;
             return true;
         }
@@ -59,24 +72,25 @@ bool fmt_separator::operator() (iterator& next, iterator end, std::string& token
             // "%# +o| %#o" "%10.5d|:%10.5d"
             auto fmtend = std::find_if(next, end, isfmttype);
             next = fmtend != end ? fmtend + 1 : end;
-            token.assign(start, next);
+            //token.assign(start, next);
+            assign_sv(token, start, next);
             return true;
         }
     }
     else
     {
         next = find(start, end, FMT::Start);
-        token.assign(start, next);
+        //token.assign(start, next);
+        assign_sv(token, start, next);
         return true;
     }
 }
 
 
-fmtspec_t parsefmt(std::string const& spec)
+fmtspec_t parsefmt(string_view spec)
 {
-    using red::string_view;
-
-    const std::regex rx{ FMT::Pattern };
+    std::regex rx{ FMT::Pattern };
+    rx.imbue(std::locale::classic());
     enum match_groups : size_t {
         FullMatch,
         Flags, FieldWidth, Precision, LengthMod, Type
@@ -84,13 +98,13 @@ fmtspec_t parsefmt(std::string const& spec)
     fmtspec_t fmtspec;
     fmtspec.fmt = spec;
 
-    std::smatch matches;
-    if (std::regex_match(spec, matches, rx))
+    std::match_results<string_view::iterator> matches;
+    if (std::regex_match(spec.begin(), spec.end(), matches, rx))
     {
         fmtspec.conversion = *matches[Type].first;
         //const auto start = std::addressof(*matches[FullMatch].first);
 
-        const auto start = spec.c_str();
+        const auto start = spec.data();
 
         if (matches[Flags].matched) {
             auto ptr = start + matches.position(Flags);

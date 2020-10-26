@@ -465,8 +465,7 @@ int red::polyloc::do_printf(string_view fmt, std::ostream& outs, va_list args)
     fo.push(outs);
     fo.copyfmt(outs);
 
-    auto format = std::string(fmt);
-    fmt_tokenizer toknz{ format };
+    fmt_tokenizer toknz{ fmt };
 
     for (auto& tok : toknz)
     {
