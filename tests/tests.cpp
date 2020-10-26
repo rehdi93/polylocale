@@ -292,8 +292,7 @@ TEST_CASE("sprintf_l tests", "[sprintf]")
 
 TEST_CASE("Size handler bug", "[bug]")
 {
-    auto loc = locale_ptr(poly_newlocale(POLY_ALL_MASK, "C", NULL));
-    auto buffer = string(50, '\3');
+    FMT_VARS("C", 50);
 
     intmax_t j = -1;
     int z = 2;
