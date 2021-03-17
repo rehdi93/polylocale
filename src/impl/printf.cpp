@@ -11,7 +11,6 @@
 #include "printf.hpp"
 #include "printf_fmt.hpp"
 #include "bitmask.hpp"
-#include "fmtdefs.h"
 
 #include "boost/io/ios_state.hpp"
 #include "boost/iostreams/filter/counter.hpp"
