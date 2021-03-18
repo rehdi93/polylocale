@@ -144,26 +144,16 @@ int main(int argc, char* argv[]) {
     return result;
 }
 
+auto resetBuffer(std::vector<char>& range)
+{
+    using namespace std;
+    fill(begin(range), end(range), '\3');
+}
 
 // bp condition: strcmp(dbgfmt, "...")==0
 
-class test_buffer
-{
-public:
-    std::vector<char> mem;
-    int count;
-
-    explicit test_buffer(size_t realSize, int testSize = -1) : mem(realSize, '\3'), count(testSize)
-    {}
-
-    auto reset(char ch = '\3')
-    {
-        std::fill(mem.begin(), mem.end(), ch);
-    }
-};
-
 template<typename ...VA>
-auto test_print_format(string expected, string format, poly_locale_t loc, char* buffer, VA... args)
+auto test_print_format(string expected, char* buffer, string format, poly_locale_t loc, VA... args)
 {
     auto fmt = format.c_str();
     int retval = poly_sprintf_l(buffer, fmt, loc, args...);
@@ -176,7 +166,7 @@ auto test_print_format(string expected, string format, poly_locale_t loc, char* 
 }
 
 template<typename ...VA>
-auto test_print_format_n(string expected, string format, poly_locale_t loc, char* buffer, size_t count, VA... args)
+auto test_print_format_n(string expected, char* buffer, size_t count, string format, poly_locale_t loc, VA... args)
 {
     auto fmt = format.c_str();
     int retval = poly_snprintf_l(buffer, count, fmt, loc, args...);
@@ -185,18 +175,17 @@ auto test_print_format_n(string expected, string format, poly_locale_t loc, char
 
     CAPTURE(format);
     REQUIRE(expected == result);
-    //REQUIRE(retval == expected.size());
+
     return retval;
 }
 
-#define TEST_FMT(expected, fmt, ...) test_print_format(expected, fmt, ploc.get(), buffer.data(), __VA_ARGS__)
 
 TEST_CASE("Formating integers", "[sprintf][format]")
 {
     auto ploc = locale_ptr(poly_newlocale(POLY_ALL_MASK, "C", NULL));
     auto buffer = std::vector<char>(100, '\3');
 
-    //test_print_format("1210 ", "%d1%u", ploc.get(), buffer.data(), 12, 0);
+#define TEST_FMT(expected, fmt, ...) test_print_format(expected, buffer.data(), fmt, ploc.get(), __VA_ARGS__)
 
     TEST_FMT("1210", "%d1%u", 12, 0);
     TEST_FMT("0177 0", "%# +o %#o", 127, 0);
@@ -226,6 +215,8 @@ TEST_CASE("Formating floating point", "[sprintf][format]")
     auto ploc = locale_ptr(poly_newlocale(POLY_ALL_MASK, "C", NULL));
     auto buffer = std::vector<char>(100, '\3');
     const double pow_2_85 = 38685626227668133590597632.0;
+
+#define TEST_FMT(expected, fmt, ...) test_print_format(expected, buffer.data(), fmt, ploc.get(), __VA_ARGS__)
 
     TEST_FMT("-3.000000", "%f", -3.0);
     TEST_FMT("-8.8888888800", "%.10f", -8.88888888);
@@ -295,18 +286,11 @@ TEST_CASE("sprintf_l tests", "[sprintf]")
         REQUIRE(result == "");
     }
 
-    test_print_format("bad fmt:  -.3M", "bad fmt: % -.3M"
-        , ploc.get(), buffer.data()
-        , 321.1);
-    test_print_format("bad fmt:  -.3M some other text", "bad fmt: % -.3M some other text"
-        , ploc.get(), buffer.data()
-        , 321.1);
-    test_print_format("a b     1", "%c %s     %d"
-        , ploc.get(), buffer.data()
-        , 'a', "b", 1);
-    test_print_format("abc     ", "%-8.3s"
-        , ploc.get(), buffer.data()
-        , "abcdefgh");
+    test_print_format("bad fmt:  -.3M", buffer.data(), "bad fmt: % -.3M", ploc.get(), 321.1);
+    test_print_format("bad fmt:  -.3M some other text", 
+        buffer.data(), "bad fmt: % -.3M some other text", ploc.get(), 321.1);
+    test_print_format("a b     1", buffer.data(), "%c %s     %d", ploc.get(), 'a', "b", 1);
+    test_print_format("abc     ", buffer.data(), "%-8.3s", ploc.get(), "abcdefgh");
 }
 
 TEST_CASE("Size handler bug", "[bug]")
@@ -334,9 +318,7 @@ TEST_CASE("snprintf_l tests", "[snprintf]") {
     const double pow_2_75 = 37778931862957161709568.0;
     using namespace std::literals;
 
-    test_print_format(" b     123", " %s     %d", 
-        ploc.get(), buffer.data(), 
-        "b", 123);
+    test_print_format(" b     123", buffer.data(), " %s     %d",ploc.get(), "b", 123);
 
     SECTION("Large float") {
         auto expected = "37778931862957161709568.000000"sv;
@@ -349,9 +331,8 @@ TEST_CASE("snprintf_l tests", "[snprintf]") {
 
     SECTION("Truncate") {
         auto would_be_written = 
-            test_print_format_n("number 12", "number %f", 
-                ploc.get(), buffer.data(), 10, 
-                123.456789);
+            test_print_format_n("number 12", 
+                buffer.data(), 10, "number %f", ploc.get(), 123.456789);
 
         REQUIRE(would_be_written == 17);
     }
