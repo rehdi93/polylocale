@@ -94,7 +94,7 @@ fmtspec_t parsefmt(string_view spec)
 
     // format specifier regex
     // https://regex101.com/r/Imw6fT/2
-    constexpr auto Pattern = "%"
+    constexpr char Pattern[] = "%"
         "([" FMT_FLAGS "]+)?" // flags
         "(" R"([0-9]+|\*)" ")?" // field width
         "(" R"(\.[0-9]+|\.\*)" ")?" // precision
@@ -120,60 +120,58 @@ fmtspec_t parsefmt(string_view spec)
 
         // get type
         using ft = fmttype;
-        using ff = fmtflag;
+        using iof = std::ios_base;
+        using mf = pfflags;
 
-        auto typeis = [=](string_view chars) {
+        auto typein = [=](string_view chars) {
             return chars.find(typech) != string::npos;
         };
 
-        if (typeis(FMT_CHAR)) { // chars
+        if (typein(FMT_CHAR)) { // chars
             fmtspec.type = ft::char_;
         }
-        else if (typeis(FMT_STRING)) { // strings
+        else if (typein(FMT_STRING)) { // strings
             fmtspec.type = ft::string;
         }
-        else if (typeis(FMT_INTEGER)) { 
-            // integers
-            if (typeis(FMT_SINT))
-                fmtspec.type = ft::sint; // signed
-            else if (typeis(FMT_UINT))
-                fmtspec.type = ft::uint; // unsigned
+        else if (typein(FMT_SINT)) { // integers
+            fmtspec.type = ft::sint;
         }
-        else if (typeis(FMT_FLOATING_PT)) { // floating point
+        else if (typein(FMT_UINT)) {
+            fmtspec.type = ft::uint;
+        }
+        else if (typein(FMT_FLOATING_PT)) { // floating point
             fmtspec.type = ft::floatpt;
-            fmtspec.uppercase = isupper(typech, std::locale::classic());
+            if (isupper(typech, std::locale::classic())) {
+                fmtspec.iosflags |= iof::uppercase;
+            }
         }
-        else if (typech == *FMT_POINTER) {
+        else if (typech == 'p') {
             fmtspec.type = ft::pointer;
         }
 
         // get repr
-        if (typeis(FMT_SINT) || typech == FMT_UINT[0]) {
-            fmtspec.style = repr::decimal;
-        }
-
         switch (typech)
         {
         case 'd': case 'i': case 'u': // dec
-            fmtspec.style = repr::decimal;
+            fmtspec.iosflags |= iof::dec;
             break;
         case 'X': case 'x': // hex
-            fmtspec.style = repr::hex;
+            fmtspec.iosflags |= iof::hex;
             break;
         case 'f': case 'F': // float fixed
-            fmtspec.style = repr::fixed;
+            fmtspec.iosflags |= iof::fixed;
             break;
         case 'e': case 'E': // float scientific
-            fmtspec.style = repr::scientific;
+            fmtspec.iosflags |= iof::scientific;
             break;
         case 'g': case 'G': // float default
-            fmtspec.style = repr::deffloat;
+            fmtspec.iosflags &= ~iof::floatfield;
             break;
         case 'a': case 'A': // hexfloat
-            fmtspec.style = repr::hexfloat;
+            fmtspec.iosflags |= iof::floatfield;
             break;
         case 'C': case 'S': // special case for wide char and strings
-            fmtspec.lengthmod = lenmod::wide;
+            fmtspec.moreflags |= mf::wide;
             break;
         default:
             break;
@@ -182,27 +180,25 @@ fmtspec_t parsefmt(string_view spec)
         if (matches[Flags].matched) {
             auto ptr = start + matches.position(Flags);
             auto flags_sv = string_view(ptr, matches.length(Flags));
-            std::bitset<5> bits;
 
             for (auto f : flags_sv)
             {
                 switch (f)
                 {
                 case '-': // left justify
-                    bits[0] = true;
-                    //fmtspec.flags |= (int)ff::left;
+                    fmtspec.iosflags |= iof::left;
                     break;
                 case '+': // show positive sign
-                    bits[1] = true;
+                    fmtspec.iosflags |= iof::showpos;
                     break;
                 case ' ': // use a blank to prefix the output value if it is signed and positive
-                    bits[2] = true;
+                    fmtspec.moreflags |= mf::blankpos;
                     break;
                 case '#': // alt. form: ios::showbase for ints, ios::showpoint for floats
-                    bits[3] = true;
+                    fmtspec.moreflags |= mf::altform;
                     break;
                 case '0': // 0 fill
-                    bits[4] = true;
+                    fmtspec.moreflags |= mf::zerofill;
                     break;
                 default:
                     break;
@@ -210,11 +206,9 @@ fmtspec_t parsefmt(string_view spec)
             }
 
             // ' ' has no effect if '+' is set
-            if (bits[1] && bits[2]) {
-                bits[2] = false;
+            if ((fmtspec.iosflags & iof::showpos) == 0) {
+                fmtspec.moreflags &= ~mf::blankpos;
             }
-
-            fmtspec.flags = bits.to_ulong();
         }
         if (matches[LengthMod].matched) {
             auto ptr = start + matches.position(LengthMod);
@@ -226,28 +220,28 @@ fmtspec_t parsefmt(string_view spec)
             else if (length == "h" || length == "hh") {
                 // halfwidth, quarterwidth
                 // not used, but keep track of it
-                fmtspec.lengthmod = lenmod::narrow;
+                fmtspec.moreflags |= mf::narrow;
             }
             // are we 64-bit (unix style)
             else if (length == "l") {
-                if (typeis("cs") || sizeof(long) == 8)
-                    fmtspec.lengthmod = lenmod::wide;
+                if (typein("cs") || sizeof(long) == 8)
+                    fmtspec.moreflags |= mf::wide;
             }
             else if (length == "ll") {
-                fmtspec.lengthmod = lenmod::wide;
+                fmtspec.moreflags |= mf::wide;
             }
             // are we 64-bit on intmax_t? (c99)
             else if (length == "j") {
                 if (sizeof(intmax_t) == 8)
-                    fmtspec.lengthmod = lenmod::wide;
+                    fmtspec.moreflags |= mf::wide;
             }
             // are we 64-bit (msft style)
             else if (length == "I64") {
-                fmtspec.lengthmod = lenmod::wide;
+                fmtspec.moreflags |= mf::wide;
             }
             else if (length == "I32") {
                 if (sizeof(void*) == 8)
-                    fmtspec.lengthmod = lenmod::wide;
+                    fmtspec.moreflags |= mf::wide;
             }
         }
         if (matches[FieldWidth].matched) {

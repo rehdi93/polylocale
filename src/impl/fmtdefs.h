@@ -17,10 +17,3 @@
 #define FMT_SPECIAL       "%.*"
 
 constexpr auto FMT_START = FMT_SPECIAL[0], FMT_PREC = FMT_SPECIAL[1], FMT_VA = FMT_SPECIAL[2];
-
-//namespace FMT {
-//    constexpr char Start = '%', Precision = '.', FromVa = '*';
-//    constexpr char Length[] = FMT_LENGTHMOD;
-//    constexpr char Flags[] = FMT_FLAGS;
-//    constexpr char Types[] = FMT_ALL_TYPES;
-//} // FMT

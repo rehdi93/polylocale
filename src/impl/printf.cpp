@@ -10,8 +10,8 @@
 
 #include "printf.hpp"
 #include "printf_fmt.hpp"
-#include "bitmask.hpp"
-
+//#include "bitmask.hpp"
+#include "fmtdefs.h"
 #include "boost/io/ios_state.hpp"
 #include "boost/iostreams/filter/counter.hpp"
 #include "boost/iostreams/filtering_stream.hpp"
@@ -30,9 +30,7 @@
 
 using std::ios;
 using red::polyloc::fmtspec_t;
-namespace bm = bitmask;
 using namespace std::literals;
-using namespace bitmask::ops;
 namespace io = boost::iostreams;
 
 // HELPERS
@@ -68,362 +66,205 @@ private:
     boost::io::basic_ios_fill_saver<Ch, Tr> m_fillsaver;
 };
 
-enum class arg_flags : unsigned short
-{
-    none,
-    blankpos = 1 << 0,
-    altform = 1 << 1,
-    narrow = 1<<2,
-    wide = 1<<3
-};
 
 using arg_variant = std::variant<char, wchar_t, char*, wchar_t*, void*, int64_t, uint64_t, long double>;
 
-class arg_context
+
+void apply_flags(std::ostream& os, fmtspec_t const& fmts)
 {
-    fmtspec_t fmtspec;
-    va_list* va;
-    arg_flags aflags = arg_flags::none;
+    using namespace red::polyloc;
 
-    void apply_flags(std::ostream& os)
-    {
-        for (auto f : fmtspec.flags)
-        {
-            switch (f)
-            {
-            case '-': // left justify
-                os.setf(ios::left, ios::adjustfield);
-                break;
-            case '+': // show positive sign
-                os.setf(ios::showpos);
-                break;
-            case ' ': // Use a blank to prefix the output value if it is signed and positive, 
-                aflags |= arg_flags::blankpos;
-                break;
-            case '#': // alt. form: ios::showbase for ints, ios::showpoint for floats
-                aflags |= arg_flags::altform;
-                break;
-            case '0':
-                os.fill('0');
-                break;
-            default:
-                break;
-            }
-        }
+    os.flags(fmts.iosflags);
 
-        // ' ' has no effect if '+' is set
-        if (bm::has(os.flags(), ios::showpos))
-        {
-            aflags &= ~arg_flags::blankpos;
-        }
+    if ((fmts.moreflags & pfflags::zerofill) == 0) {
+        os.fill('0');
     }
-
-    // field width, precision
-    void apply_fwpr(std::ostream& os)
-    {
-        if (fmtspec.field_width == fmtspec.VAL_VA)
-            fmtspec.field_width = va_arg(*va, int);
-
-        if (fmtspec.precision == fmtspec.VAL_VA)
-            fmtspec.precision = va_arg(*va, int);
-
-        os.width(fmtspec.field_width > 0 ? fmtspec.field_width : 0);
-        os.precision(fmtspec.precision > 0 ? fmtspec.precision : 0);
-    }
-
-    void apply_repr(std::ostream& os)
-    {
-        switch (fmtspec.conversion)
-        {
-        case 'd': case 'i': case 'u': // integers
-            os << std::dec;
-            break;
-        case 'X':
-            os.setf(ios::uppercase);
-        case 'x':
-            os << std::hex;
-            break;
-        case 'o':
-            os << std::oct;
-            break;
-
-        case 'F': // float fixed
-            os.setf(ios::uppercase);
-        case 'f':
-            os << std::fixed;
-            break;
-        case 'E': // float scientific
-            os.setf(ios::uppercase);
-        case 'e':
-            os << std::scientific;
-            break;
-        case 'G': // float default
-            os.setf(ios::uppercase);
-        case 'g':
-            os << std::defaultfloat;
-            break;
-        case 'A': // hexfloat
-            os.setf(ios::uppercase);
-        case 'a':
-            os << std::hexfloat;
-            break;
-        
-        case 'C': case 'S': // special case for wide char and strings
-            aflags |= arg_flags::wide;
-            break;
+    if ((fmts.moreflags & pfflags::altform) == 0) {
+        if (fmts.type == fmttype::sint || fmts.type == fmttype::uint) {
+            os.setf(ios::showbase);
         }
-
-        // handle size overrides
-        if (!fmtspec.length_mod.empty())
-        {
-            if (fmtspec.length_mod == "h") {
-                // halfwidth
-                // not used, but keep track of it
-                aflags |= arg_flags::narrow;
-            }
-            else if (fmtspec.length_mod == "hh") {
-                // quarterwidth
-                // ignore
-            }
-            // are we 64-bit (unix style)
-            else if (fmtspec.length_mod == "l") {
-                switch (fmtspec.conversion)
-                {
-                case 'c': case 's':
-                    aflags |= arg_flags::wide;
-                    break;
-                default:
-                    if (sizeof(long) == 8)
-                        aflags |= arg_flags::wide;
-                    break;
-                }
-            }
-            else if (fmtspec.length_mod == "ll") {
-                aflags |= arg_flags::wide;
-            }
-            // are we 64-bit on intmax_t? (c99)
-            else if (fmtspec.length_mod == "j") {
-                if (sizeof(intmax_t) == 8)
-                    aflags |= arg_flags::wide;
-            }
-            // are we 64-bit on size_t or ptrdiff_t? (c99)
-            else if (fmtspec.length_mod == "z" || fmtspec.length_mod == "t") {
-                if (sizeof(ptrdiff_t) == 8)
-                    aflags |= arg_flags::wide;
-            }
-            // are we 64-bit (msft style)
-            else if (fmtspec.length_mod == "I64") {
-                aflags |= arg_flags::wide;
-            }
-            else if (fmtspec.length_mod == "I32") {
-                if (sizeof(void*) == 8)
-                    aflags |= arg_flags::wide;
-            }
-        }
-    }
-
-    arg_variant get_value() const
-    {
-        arg_variant val;
-
-        switch (fmtspec.conversion)
-        {
-        case 'C': // chars
-        case 'c':
-            if (bm::has(aflags, arg_flags::wide)) {
-                auto arg = va_arg(*va, wint_t);
-                val = (wchar_t)arg;
-            }
-            else {
-                auto arg = va_arg(*va, int);
-                val = (char)arg;
-            }
-            break;
-
-        case 'S': // strings
-        case 's':
-            if (bm::has(aflags, arg_flags::wide)) {
-                val = va_arg(*va, wchar_t*);
-            }
-            else {
-                val = va_arg(*va, char*);
-            }
-            break;
-
-        case 'd': // integers
-        case 'i':
-        {
-            if (bm::has(aflags, arg_flags::wide))
-            {
-                val = va_arg(*va, int64_t);
-            }
-            else
-            {
-                val = (int64_t) va_arg(*va, int32_t);
-            }
-        } break;
-
-        case 'u': // unsigned integers
-        case 'o':
-        case 'X': case 'x':
-        {
-            if (bm::has(aflags, arg_flags::wide))
-            {
-                val = va_arg(*va, uint64_t);
-            }
-            else
-            {
-                val = (uint64_t)va_arg(*va, uint32_t);
-            }
-        } break;
-            
-        case 'E': case 'e': // floating point
-        case 'F': case 'f':
-        case 'G': case 'g':
-        case 'A': case 'a':
-            if (fmtspec.length_mod == "L") {
-                val = va_arg(*va, long double);
-            }
-            else {
-                auto arg = va_arg(*va, double);
-                val = (long double)arg;
-            }
-            break;
-
-        case 'p':
-            val = va_arg(*va, void*);
-            break;
-
-        default:
-            break;
-        }
-
-        return val;
-    }
-
-    void put_fp(long double number, std::ostream& os) const
-    {
-        if (bm::has(aflags, arg_flags::altform)) {
+        else if (fmts.type == fmttype::floatpt) {
             os.setf(ios::showpoint);
         }
-
-        if (bm::has(aflags, arg_flags::blankpos) && number >= 0)
-            os.put(' ');
-
-        if (fmtspec.precision == -1)
-        {
-            os.precision(6);
-        }
-        else if (fmtspec.precision == 0)
-        {
-            number = std::round(number);
-        }
-
-        os << number;
     }
+    // blankpos requires the value
+}
 
-    void put_str(red::wstring_view str, std::ostream& os) const {
-        auto conv = wconverter(new cvt_t(os.getloc().name()));
-        std::string tmp = conv.to_bytes(str.data(), str.data() + str.size());
-        put_str(tmp, os);
-    }
+// field width, precision
+void apply_fwpr(std::ostream& os, fmtspec_t& fmts, va_list* pva)
+{
+    if (fmts.field_width == fmts.VAL_VA)
+        fmts.field_width = va_arg(*pva, int);
+    
+    if (fmts.precision == fmts.VAL_VA)
+        fmts.precision = va_arg(*pva, int);
+    
+    os.width(fmts.field_width > 0 ? fmts.field_width : 0);
+    os.precision(fmts.precision > 0 ? fmts.precision : 0);
+}
 
-    void put_str(red::string_view str, std::ostream& os) const {
-        if (fmtspec.precision > 0)
-            os << str.substr(0, fmtspec.precision);
-        else
-            os << str;
-    }
+auto extract_value(fmtspec_t const& fmts, va_list* pva)
+{
+    using ft = red::polyloc::fmttype;
+    using mf = red::polyloc::pfflags;
+    arg_variant val;
 
-    template<class I>
-    using Integer = std::enable_if_t<std::is_integral<I>::value>;
+    bool wideflag = (fmts.moreflags & mf::wide) == 0;
 
-    template<typename T, class = Integer<T>>
-    void put_int(T val, std::ostream& os) const
+    switch (fmts.type)
     {
-        if (bm::has(aflags, arg_flags::altform)) {
-            os << std::showbase;
+    case ft::char_:
+        if (wideflag) {
+            auto arg = va_arg(*pva, wint_t);
+            val = (wchar_t)arg;
         }
-
-        if (bm::has(aflags, arg_flags::blankpos) && val >= 0 && fmtspec.field_width < 2)
-            os.put(' ');
-
-        if (fmtspec.precision >= 0 && val == 0)
-        {
-            if (bitmask::has_all(os.flags(), ios::oct | ios::showbase))
-            {
-                os << 0;
-                return;
-            }
-            else if (!bm::has(os.flags(), ios::showpos))
-            {
-                return;
-            }
+        else {
+            auto arg = va_arg(*pva, int);
+            val = (char)arg;
         }
-
-        if (fmtspec.precision > 0)
-        {
-            auto remainingW = fmtspec.field_width - fmtspec.precision;
-            if (remainingW > 0)
-            {
-                char s = ' ';
-                os.width(remainingW);
-                os.fill(s);
-                os << s;
-            }
-
-            os.width(fmtspec.precision);
-            os.fill('0');
+        break;
+    case ft::string:
+        if (wideflag) {
+            val = va_arg(*pva, wchar_t*);
         }
-
-        os << val;
+        else {
+            val = va_arg(*pva, char*);
+        }
+        break;
+    case ft::sint:
+        if (wideflag) {
+            val = va_arg(*pva, int64_t);
+        }
+        else {
+            val = (int64_t)va_arg(*pva, int32_t);
+        }
+        break;
+    case ft::uint:
+        if (wideflag) {
+            val = va_arg(*pva, uint64_t);
+        }
+        else {
+            val = (uint64_t)va_arg(*pva, uint32_t);
+        }
+        break;
+    case ft::floatpt:
+        if (wideflag) {
+            val = va_arg(*pva, long double);
+        }
+        else {
+            auto arg = va_arg(*pva, double);
+            val = (long double)arg;
+        }
+        break;
+    case ft::pointer:
+        val = va_arg(*pva, void*);
+        break;
+    default:
     }
 
-public:
-    arg_context(fmtspec_t fmts, va_list* pva) : fmtspec(fmts), va(pva)
-    {}
+    return val;
+}
 
-    auto put(std::ostream& os)
+
+void put_fp(long double number, fmtspec_t const& fmts, std::ostream& os)
+{
+    using mf = red::polyloc::pfflags;
+
+    if ((fmts.moreflags & mf::blankpos) == 0 && number >= 0)
+        os.put(' ');
+
+    if (fmts.precision == -1)
     {
-        using std::get_if;
-        ios_saver<char> _g_(os);
+        os.precision(6);
+    }
+    else if (fmts.precision == 0)
+    {
+        number = std::round(number);
+    }
 
-        apply_flags(os);
-        apply_fwpr(os);
-        apply_repr(os);
-        auto value = get_value();
+    os << number;
+}
 
-        if (auto ptr = get_if<char>(&value)) {
-            put_str({ ptr, 1 }, os);
+void put_str(red::wstring_view str, fmtspec_t const& fmts, std::ostream& os) {
+    auto conv = wconverter(new cvt_t(os.getloc().name()));
+    std::string tmp = conv.to_bytes(str.data(), str.data() + str.size());
+    put_str(tmp, fmts, os);
+}
+
+void put_str(red::string_view str, fmtspec_t const& fmts, std::ostream& os) {
+    if (fmts.precision > 0)
+        os << str.substr(0, fmts.precision);
+    else
+        os << str;
+}
+
+template<typename T>
+void put_int(T val, fmtspec_t const& fmts, std::ostream& os)
+{
+    using mf = red::polyloc::pfflags;
+
+    if ((fmts.moreflags & mf::blankpos) != 0 && val >= 0 && fmts.field_width < 2)
+        os.put(' ');
+
+    if (fmts.precision >= 0 && val == 0)
+    {
+
+        if ((os.flags() & ios::oct | ios::showbase))
+        {
+            os << 0;
+            return;
         }
-        else if (auto ptr = get_if<wchar_t>(&value)) {
-            put_str({ ptr, 1 }, os);
-        }
-        else if (auto ptr = get_if<char*>(&value)) {
-            put_str(*ptr, os);
-        }
-        else if (auto ptr = get_if<wchar_t*>(&value)) {
-            put_str(*ptr, os);
-        }
-        else if (auto ptr = get_if<void*>(&value)) {
-            os << std::hex << ptr;
-        }
-        else if (auto ptr = get_if<int64_t>(&value)) {
-            put_int(*ptr, os);
-        }
-        else if (auto ptr = get_if<uint64_t>(&value)) {
-            put_int(*ptr, os);
-        }
-        else if (auto ptr = get_if<long double>(&value)) {
-            put_fp(*ptr, os);
+        else if (!bm::has(os.flags(), ios::showpos))
+        {
+            return;
         }
     }
 
-};
+    if (fmts.precision > 0)
+    {
+        auto remainingW = fmts.field_width - fmts.precision;
+        if (remainingW > 0)
+        {
+            char s = ' ';
+            os.width(remainingW);
+            os.fill(s);
+            os << s;
+        }
 
-auto& operator<< (std::ostream& os, arg_context& ctx) {
-    ctx.put(os);
-    return os;
+        os.width(fmts.precision);
+        os.fill('0');
+    }
+
+    os << val;
+}
+
+void put(std::ostream& os, arg_variant const& value, fmtspec_t const& fmts) {
+    using std::get_if;
+
+    if (auto ptr = get_if<char>(&value)) {
+        put_str({ ptr, 1 }, fmts, os);
+    }
+    else if (auto ptr = get_if<wchar_t>(&value)) {
+        put_str({ ptr, 1 }, fmts, os);
+    }
+    else if (auto ptr = get_if<char*>(&value)) {
+        put_str(*ptr, fmts, os);
+    }
+    else if (auto ptr = get_if<wchar_t*>(&value)) {
+        put_str(*ptr, fmts, os);
+    }
+    else if (auto ptr = get_if<void*>(&value)) {
+        os << std::hex << ptr;
+    }
+    else if (auto ptr = get_if<int64_t>(&value)) {
+        put_int(*ptr, fmts, os);
+    }
+    else if (auto ptr = get_if<uint64_t>(&value)) {
+        put_int(*ptr, fmts, os);
+    }
+    else if (auto ptr = get_if<long double>(&value)) {
+        put_fp(*ptr, fmts, os);
+    }
 }
 
 } // unnamed
@@ -464,11 +305,13 @@ int red::polyloc::do_printf(string_view fmt, std::ostream& outs, va_list args)
     fo.push(outs);
     fo.copyfmt(outs);
 
+    //auto wconv = wconverter(new cvt_t(fo.getloc().name()));
+
     fmt_tokenizer toknz{ fmt };
 
     for (auto& tok : toknz)
     {
-        if (tok.size() >= 2 && tok[0] == FMT::Start)
+        if (tok.size() >= 2 && tok[0] == FMT_START)
         {
             auto fmtspec = parsefmt(tok);
             if (fmtspec.error) {
@@ -476,8 +319,13 @@ int red::polyloc::do_printf(string_view fmt, std::ostream& outs, va_list args)
                 fo << fmtspec.fmt.substr(1);
             }
             else {
-                arg_context ctx{ fmtspec, &va };
-                fo << ctx;
+                ios_saver<char> _g_(fo);
+
+                // prepare
+                apply_fwpr(fo, fmtspec, &va);
+                apply_flags(fo, fmtspec);
+                auto value = extract_value(fmtspec, &va);
+
             }
         }
         else

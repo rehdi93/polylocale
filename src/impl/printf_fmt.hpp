@@ -22,37 +22,6 @@ namespace red::polyloc
 
     using fmt_tokenizer = boost::tokenizer<fmt_separator, fmt_separator::iterator, red::string_view>;
 
-    enum class fmtflag
-    {
-        left =     0b00001,
-        showpos =  0b00010,
-        blankpos = 0b00100,
-        altform =  0b01000,
-        zerofill = 0b10000,
-    };
-
-    enum class repr
-    {
-        none,
-        decimal,
-
-        hex,
-        oct,
-
-        fixed,
-        scientific,
-        deffloat,
-        hexfloat,
-        
-        reprcount
-    };
-
-    enum class lenmod
-    {
-        narrow,
-        wide
-    };
-
     enum class fmttype
     {
         char_,
@@ -61,6 +30,19 @@ namespace red::polyloc
         uint,
         floatpt,
         pointer
+    };
+
+    struct pfflags {
+        enum Enum
+        {
+            altform =   0b00001,
+            zerofill =  0b00010,
+            blankpos =  0b00100,
+            narrow =    0b01000,
+            wide =      0b10000
+        };
+
+        ~pfflags() = delete;
     };
 
     // %[flags][width][.precision][size]type
@@ -77,13 +59,10 @@ namespace red::polyloc
         
         // values
         int field_width = VAL_AUTO, precision = VAL_AUTO;
-        //char conversion = '\030'; // type
-
-        unsigned long flags;
-        lenmod lengthmod{};
-        repr style;
+        
+        std::ios_base::fmtflags iosflags;
+        unsigned long moreflags;
         fmttype type;
-        bool uppercase{};
     };
 
     fmtspec_t parsefmt(red::string_view spec);
