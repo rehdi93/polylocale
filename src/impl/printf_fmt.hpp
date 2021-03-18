@@ -35,7 +35,7 @@ namespace red::polyloc
         pointer
     };
 
-    struct moreflags {
+    namespace moreflags {
         enum Enum
         {
             altform =   0b00001,
@@ -44,9 +44,7 @@ namespace red::polyloc
             narrow =    0b01000,
             wide =      0b10000
         };
-
-        ~moreflags() = delete;
-    };
+    }
 
     // %[flags][width][.precision][size]type
     struct fmtspec_t

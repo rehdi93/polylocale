@@ -106,7 +106,7 @@ void apply_fwpr(std::ostream& os, fmtspec_t& fmts, va_list* pva)
 auto extract_value(fmtspec_t const& fmts, va_list* pva)
 {
     using ft = red::polyloc::fmttype;
-    using mf = red::polyloc::moreflags;
+    using mf = red::polyloc::moreflags::Enum;
     arg_variant val;
 
     bool wideflag = (fmts.moreflags & mf::wide) != 0;
@@ -169,7 +169,7 @@ auto extract_value(fmtspec_t const& fmts, va_list* pva)
 
 void put_fp(long double number, fmtspec_t const& fmts, std::ostream& os)
 {
-    using mf = red::polyloc::moreflags;
+    using mf = red::polyloc::moreflags::Enum;
 
     if ((fmts.moreflags & mf::blankpos) != 0 && number >= 0)
         os.put(' ');
@@ -202,7 +202,7 @@ void put_str(red::wstring_view str, fmtspec_t const& fmts, std::ostream& os) {
 template<typename T>
 void put_int(T val, fmtspec_t const& fmts, std::ostream& os)
 {
-    using mf = red::polyloc::moreflags;
+    using mf = red::polyloc::moreflags::Enum;
 
     if ((fmts.moreflags & mf::blankpos) != 0 && val >= 0 && fmts.field_width < 2)
         os.put(' ');

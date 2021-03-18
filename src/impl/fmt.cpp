@@ -113,7 +113,7 @@ fmtspec_t parsefmt(string_view spec)
         // get type
         using ft = fmttype;
         using iof = std::ios_base;
-        using mf = moreflags;
+        using mf = moreflags::Enum;
 
         auto typein = [=](string_view chars) {
             return chars.find(typech) != string::npos;
