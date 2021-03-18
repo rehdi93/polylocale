@@ -198,7 +198,6 @@ TEST_CASE("Formating integers", "[sprintf][format]")
 
     //test_print_format("1210 ", "%d1%u", ploc.get(), buffer.data(), 12, 0);
 
-
     TEST_FMT("1210", "%d1%u", 12, 0);
     TEST_FMT("0177 0", "%# +o %#o", 127, 0);
     TEST_FMT("+5", "%+2d", 5);
@@ -330,11 +329,14 @@ TEST_CASE("Size handler bug", "[bug]")
 
 TEST_CASE("snprintf_l tests", "[snprintf]") {
     auto ploc = locale_ptr(poly_newlocale(POLY_ALL_MASK, "C", NULL));
-    auto buffer = std::vector<char>(100, '\3');
+    auto buffer = std::vector<char>(1000, '\3');
+
     const double pow_2_75 = 37778931862957161709568.0;
     using namespace std::literals;
 
-    TEST_FMT(" b     123", " %s     %d", "b", 123);
+    test_print_format(" b     123", " %s     %d", 
+        ploc.get(), buffer.data(), 
+        "b", 123);
 
     SECTION("Large float") {
         auto expected = "37778931862957161709568.000000"sv;
@@ -346,9 +348,12 @@ TEST_CASE("snprintf_l tests", "[snprintf]") {
     }
 
     SECTION("Truncate") {
-        auto i = test_print_format_n("number 12", "number %f", 
-            ploc.get(), buffer.data(), 10, 
-            123.456789);
+        auto would_be_written = 
+            test_print_format_n("number 12", "number %f", 
+                ploc.get(), buffer.data(), 10, 
+                123.456789);
+
+        REQUIRE(would_be_written == 17);
     }
 
     SECTION("Don't write if count==0, return necessary size") {
