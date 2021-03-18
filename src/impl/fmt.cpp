@@ -4,23 +4,18 @@
 #include <iterator>
 #include <locale>
 #include <regex>
-#include <bitset>
 
 #include "fmtdefs.h"
 
 using std::begin; using std::end;
 using std::find;
 
-using red::string_view;
-using std::string;
+using red::string_view; using std::string;
 
-static void assign_sv(string_view& sv, string_view::iterator begin_it, string_view::iterator end_it)
-{
-    auto* begin = std::addressof(*begin_it);
-    auto dist = std::distance(begin_it, end_it);
-    assert(dist > 0);
-    sv = { begin, size_t(dist) };
-}
+//template<class Iter, typename Ch>
+//static void assign_sv(Iter b, Iter e, red::basic_string_view<Ch>& sv) {
+//    sv = { std::addressof(*b), static_cast<size_t>(std::distance(b,e)) };
+//}
 
 namespace red::polyloc {
 
@@ -50,7 +45,7 @@ bool isfmtchar(char ch)
 }
 
 
-bool fmt_separator::operator() (iterator& next, iterator end, red::string_view& token) {
+bool fmt_separator::operator() (iterator& next, iterator end, token_type& token) {
     auto start = next;
     if (start == end)
         return false;
@@ -62,9 +57,8 @@ bool fmt_separator::operator() (iterator& next, iterator end, red::string_view& 
 
         if (*std::next(start) == FMT_START) {
             // escaped %
-            //token.assign(1, FMT::Start);
+            token.assign(1, FMT_START);
             auto& ch = *std::next(start);
-            token = { &ch, 1 };
             next += 2;
             return true;
         }
@@ -73,16 +67,14 @@ bool fmt_separator::operator() (iterator& next, iterator end, red::string_view& 
             // "%# +o| %#o" "%10.5d|:%10.5d"
             auto fmtend = std::find_if(next, end, isfmttype);
             next = fmtend != end ? fmtend + 1 : end;
-            //token.assign(start, next);
-            assign_sv(token, start, next);
+            token.assign(start, next);
             return true;
         }
     }
     else
     {
         next = find(start, end, FMT_START);
-        //token.assign(start, next);
-        assign_sv(token, start, next);
+        token.assign(start, next);
         return true;
     }
 }
@@ -121,7 +113,7 @@ fmtspec_t parsefmt(string_view spec)
         // get type
         using ft = fmttype;
         using iof = std::ios_base;
-        using mf = pfflags;
+        using mf = moreflags;
 
         auto typein = [=](string_view chars) {
             return chars.find(typech) != string::npos;
@@ -206,7 +198,7 @@ fmtspec_t parsefmt(string_view spec)
             }
 
             // ' ' has no effect if '+' is set
-            if ((fmtspec.iosflags & iof::showpos) == 0) {
+            if ((fmtspec.iosflags & iof::showpos) != 0) {
                 fmtspec.moreflags &= ~mf::blankpos;
             }
         }

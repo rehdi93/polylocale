@@ -117,9 +117,7 @@ poly_locale_t poly_newlocale(int category_mask, const char* localename, poly_loc
         else
         {
             auto lc = std::locale({}, localename, cats);
-            auto* plc = new poly_locale{ lc };
-
-            return plc;
+            return new poly_locale{ lc };
         }
         
     }
@@ -145,9 +143,8 @@ poly_locale_t poly_duplocale(poly_locale_t loc)
         if (loc == POLY_GLOBAL_LOCALE) {
             return new poly_locale(std::locale());
         }
-        
-        auto plc = new poly_locale(*loc);
-        return plc;
+        else 
+            return new poly_locale(*loc);
     }
     catch(const std::bad_alloc&)
     {

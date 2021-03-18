@@ -76,10 +76,10 @@ void apply_flags(std::ostream& os, fmtspec_t const& fmts)
 
     os.flags(fmts.iosflags);
 
-    if ((fmts.moreflags & pfflags::zerofill) == 0) {
+    if ((fmts.moreflags & moreflags::zerofill) != 0) {
         os.fill('0');
     }
-    if ((fmts.moreflags & pfflags::altform) == 0) {
+    if ((fmts.moreflags & moreflags::altform) != 0) {
         if (fmts.type == fmttype::sint || fmts.type == fmttype::uint) {
             os.setf(ios::showbase);
         }
@@ -106,10 +106,10 @@ void apply_fwpr(std::ostream& os, fmtspec_t& fmts, va_list* pva)
 auto extract_value(fmtspec_t const& fmts, va_list* pva)
 {
     using ft = red::polyloc::fmttype;
-    using mf = red::polyloc::pfflags;
+    using mf = red::polyloc::moreflags;
     arg_variant val;
 
-    bool wideflag = (fmts.moreflags & mf::wide) == 0;
+    bool wideflag = (fmts.moreflags & mf::wide) != 0;
 
     switch (fmts.type)
     {
@@ -160,6 +160,7 @@ auto extract_value(fmtspec_t const& fmts, va_list* pva)
         val = va_arg(*pva, void*);
         break;
     default:
+        break;
     }
 
     return val;
@@ -168,9 +169,9 @@ auto extract_value(fmtspec_t const& fmts, va_list* pva)
 
 void put_fp(long double number, fmtspec_t const& fmts, std::ostream& os)
 {
-    using mf = red::polyloc::pfflags;
+    using mf = red::polyloc::moreflags;
 
-    if ((fmts.moreflags & mf::blankpos) == 0 && number >= 0)
+    if ((fmts.moreflags & mf::blankpos) != 0 && number >= 0)
         os.put(' ');
 
     if (fmts.precision == -1)
@@ -185,12 +186,6 @@ void put_fp(long double number, fmtspec_t const& fmts, std::ostream& os)
     os << number;
 }
 
-void put_str(red::wstring_view str, fmtspec_t const& fmts, std::ostream& os) {
-    auto conv = wconverter(new cvt_t(os.getloc().name()));
-    std::string tmp = conv.to_bytes(str.data(), str.data() + str.size());
-    put_str(tmp, fmts, os);
-}
-
 void put_str(red::string_view str, fmtspec_t const& fmts, std::ostream& os) {
     if (fmts.precision > 0)
         os << str.substr(0, fmts.precision);
@@ -198,23 +193,29 @@ void put_str(red::string_view str, fmtspec_t const& fmts, std::ostream& os) {
         os << str;
 }
 
+void put_str(red::wstring_view str, fmtspec_t const& fmts, std::ostream& os) {
+    auto conv = wconverter(new cvt_t(os.getloc().name()));
+    std::string tmp = conv.to_bytes(str.data(), str.data() + str.size());
+    put_str(tmp, fmts, os);
+}
+
 template<typename T>
 void put_int(T val, fmtspec_t const& fmts, std::ostream& os)
 {
-    using mf = red::polyloc::pfflags;
+    using mf = red::polyloc::moreflags;
 
     if ((fmts.moreflags & mf::blankpos) != 0 && val >= 0 && fmts.field_width < 2)
         os.put(' ');
 
     if (fmts.precision >= 0 && val == 0)
     {
-
-        if ((os.flags() & ios::oct | ios::showbase))
+        auto special = ios::oct | ios::showbase;
+        if ((os.flags() & special) == special)
         {
             os << 0;
             return;
         }
-        else if (!bm::has(os.flags(), ios::showpos))
+        else if ((os.flags() & ios::showpos) == 0)
         {
             return;
         }
@@ -307,7 +308,8 @@ int red::polyloc::do_printf(string_view fmt, std::ostream& outs, va_list args)
 
     //auto wconv = wconverter(new cvt_t(fo.getloc().name()));
 
-    fmt_tokenizer toknz{ fmt };
+    auto fmtcopy = std::string(fmt);
+    fmt_tokenizer toknz{ fmtcopy };
 
     for (auto& tok : toknz)
     {
@@ -324,8 +326,10 @@ int red::polyloc::do_printf(string_view fmt, std::ostream& outs, va_list args)
                 // prepare
                 apply_fwpr(fo, fmtspec, &va);
                 apply_flags(fo, fmtspec);
-                auto value = extract_value(fmtspec, &va);
+                fmtspec.iosflags = fo.flags();
 
+                auto value = extract_value(fmtspec, &va);
+                put(fo, value, fmtspec);
             }
         }
         else

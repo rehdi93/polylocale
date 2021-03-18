@@ -10,17 +10,20 @@ namespace red::polyloc
     bool isfmtlength(char ch) noexcept;
     bool isfmtchar(char ch);
 
+
+
     struct fmt_separator
     {
-        using iterator = red::string_view::iterator;
+        using token_type = std::string;
+        using iterator = std::string::const_iterator;
 
-        bool operator() (iterator& next, iterator end, red::string_view& token);
+        bool operator() (iterator& next, iterator end, token_type& token);
         void reset() {}
 
     private:
     };
 
-    using fmt_tokenizer = boost::tokenizer<fmt_separator, fmt_separator::iterator, red::string_view>;
+    using fmt_tokenizer = boost::tokenizer<fmt_separator, fmt_separator::iterator, fmt_separator::token_type>;
 
     enum class fmttype
     {
@@ -32,7 +35,7 @@ namespace red::polyloc
         pointer
     };
 
-    struct pfflags {
+    struct moreflags {
         enum Enum
         {
             altform =   0b00001,
@@ -42,7 +45,7 @@ namespace red::polyloc
             wide =      0b10000
         };
 
-        ~pfflags() = delete;
+        ~moreflags() = delete;
     };
 
     // %[flags][width][.precision][size]type
@@ -60,8 +63,8 @@ namespace red::polyloc
         // values
         int field_width = VAL_AUTO, precision = VAL_AUTO;
         
-        std::ios_base::fmtflags iosflags;
-        unsigned long moreflags;
+        long iosflags;
+        long moreflags;
         fmttype type;
     };
 
