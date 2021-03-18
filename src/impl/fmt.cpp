@@ -98,8 +98,9 @@ fmtspec_t parsefmt(string_view spec)
         Flags, FieldWidth, Precision, LengthMod, Type
     };
 
-    std::regex rx{ Pattern };
-    rx.imbue(std::locale::classic());
+    std::regex rx;
+    rx.imbue(std::locale::classic()); // must be called b4 assigning pattern
+    rx.assign(Pattern);
 
     fmtspec_t fmtspec;
     fmtspec.fmt = spec;
@@ -133,12 +134,13 @@ fmtspec_t parsefmt(string_view spec)
         }
         else if (typein(FMT_FLOATING_PT)) { // floating point
             fmtspec.type = ft::floatpt;
-            if (isupper(typech, std::locale::classic())) {
-                fmtspec.iosflags |= iof::uppercase;
-            }
         }
         else if (typech == 'p') {
             fmtspec.type = ft::pointer;
+        }
+
+        if (isupper(typech, std::locale::classic())) {
+            fmtspec.iosflags |= iof::uppercase;
         }
 
         // get repr
@@ -161,6 +163,9 @@ fmtspec_t parsefmt(string_view spec)
             break;
         case 'a': case 'A': // hexfloat
             fmtspec.iosflags |= iof::floatfield;
+            break;
+        case 'o': // octal
+            fmtspec.iosflags |= iof::oct;
             break;
         case 'C': case 'S': // special case for wide char and strings
             fmtspec.moreflags |= mf::wide;

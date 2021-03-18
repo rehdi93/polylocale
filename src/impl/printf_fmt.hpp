@@ -61,8 +61,8 @@ namespace red::polyloc
         // values
         int field_width = VAL_AUTO, precision = VAL_AUTO;
         
-        long iosflags;
-        long moreflags;
+        long iosflags = 0;
+        long moreflags = 0;
         fmttype type;
     };
 
