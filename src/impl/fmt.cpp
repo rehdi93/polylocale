@@ -85,7 +85,7 @@ fmtspec_t parsefmt(string_view spec)
     using namespace std::literals;
 
     // format specifier regex
-    // https://regex101.com/r/Imw6fT/2
+    // https://regex101.com/r/Imw6fT/3
     constexpr char Pattern[] = "%"
         "([" FMT_FLAGS "]+)?" // flags
         "(" R"([0-9]+|\*)" ")?" // field width
