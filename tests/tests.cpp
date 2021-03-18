@@ -1,16 +1,12 @@
 // adapted from stb/tests/test_sprintf.c
-#ifdef WIN32
-#define _CRT_SECURE_NO_WARNINGS
-#include <mbctype.h>
-#endif
 
 #include <memory>
 #include <string>
 #include <string_view>
-#include <array>
 #include <vector>
 #include <cstddef>
 #include <locale>
+#include <utility>
 
 #include "polylocale.h"
 
@@ -28,22 +24,6 @@ static_assert(std::is_same_v<locale_t, poly_locale*>, "locale_t is not poly_loca
 using locale_ptr_t = std::unique_ptr<poly_locale, decltype(poly_freelocale)*>;
 locale_ptr_t locale_ptr(poly_locale* ploc) { return locale_ptr_t(ploc, poly_freelocale); }
 
-static std::string COMMA_LC, POINT_LC;
-
-std::array locs_virgula_decimal{
-    "pt_BR", "pt_BR.utf8",
-    "pt_PT", "pt_PT.utf8",
-    "fr_FR", "fr_FR.utf8",
-    "ru_RU", "ru_RU.utf8",
-    "ca_FR", "ca_FR.utf8"
-};
-std::array locs_ponto_decimal{
-    "en_US", "en_US.utf8",
-    "en_GB", "en_GB.utf8",
-    "en_CA", "en_CA.utf8"
-    "POSIX", "C"
-};
-
 
 // look for a locale by decimal point
 static auto find_num_locale(char dp) -> std::string
@@ -54,22 +34,40 @@ static auto find_num_locale(char dp) -> std::string
     auto userlc = locale{ "" };
     if (use_facet<numpunct<char>>(userlc).decimal_point() == dp)
     {
-        auto n = userlc.name();
-        return n;
+        return userlc.name();
     }
 
-    std::vector<const char*> candidatos;
+    std::vector<const char*> found_locs;
+
+    static const auto decimal_comma_locales = {
+        "pt_BR", "pt_BR.utf8",
+        "pt_PT", "pt_PT.utf8",
+        "fr_FR", "fr_FR.utf8",
+        "ru_RU", "ru_RU.utf8",
+        "ca_FR", "ca_FR.utf8"
+    };
+
+    static const auto decimal_point_locales = {
+        "en_US", "en_US.utf8",
+        "en_GB", "en_GB.utf8",
+        "en_CA", "en_CA.utf8"
+        "POSIX", "C"
+    };
 
     if (dp == ',')
     {
-        candidatos.insert(candidatos.end(), begin(locs_virgula_decimal), end(locs_virgula_decimal));
+        found_locs.assign(decimal_comma_locales);
     }
     else if (dp == '.')
     {
-        candidatos.insert(candidatos.end(), begin(locs_ponto_decimal), end(locs_ponto_decimal));
+        found_locs.assign(decimal_point_locales);
+    }
+    else
+    {
+        throw std::runtime_error("invalid decimal point");
     }
 
-    for (auto name : candidatos)
+    for (auto name : found_locs)
     {
         try
         {
@@ -83,60 +81,60 @@ static auto find_num_locale(char dp) -> std::string
     }
 
     // none found
-    clog << "No locale found with decimal '" << dp << "'.\n";
-    exit(42);
+    throw std::runtime_error("No locale found");
 }
 
-static void init_locales()
+// returns a pair of valid locale names with point and comma decimal separators respectivally
+static auto get_test_locales()
 {
     using std::locale; 
     using std::clog;
+    using namespace std::literals;
+
+    std::string COMMA_LC, POINT_LC;
 
     try
     {
         if (auto env = getenv("POINT_LC")) {
             POINT_LC = env;
-            auto l = locale(POINT_LC);
+            locale l{ POINT_LC };
+        }
+        else {
+            POINT_LC = find_num_locale('.');
         }
     }
-    catch (const std::exception& e)
+    catch (const std::exception&)
     {
-        clog << "[POINT_LC] " << e.what() << '\n';
+        POINT_LC = "<error>";
     }
 
     try
     {
-
         if (auto env = getenv("COMMA_LC")) {
             COMMA_LC = env;
-            auto l = locale(COMMA_LC);
+            locale l{ POINT_LC };
+        }
+        else {
+            COMMA_LC = find_num_locale(',');
         }
     }
-    catch (const std::exception& e)
+    catch (const std::exception&)
     {
-        clog << "[COMMA_LC] " << e.what() << '\n';
+        COMMA_LC = "<error>";
     }
 
-    if (COMMA_LC.empty())
-    {
-        COMMA_LC = find_num_locale(',');
-    }
-    if (POINT_LC.empty())
-    {
-        POINT_LC = find_num_locale('.');
-    }
-
-    clog << "COMMA_LC=" << COMMA_LC << "\n";
-    clog << "POINT_LC=" << POINT_LC << "\n";
+    return make_pair(POINT_LC, COMMA_LC);
 }
 
-int main(int argc, char* argv[]) {
-#ifdef WIN32
-    _setmbcp(_MB_CP_UTF8);
-#endif // WIN32
+static string POINT_LC, COMMA_LC;
 
+int main(int argc, char* argv[]) {
     // setup test locales
-    init_locales();
+    auto lcpair = get_test_locales();
+    POINT_LC = lcpair.first;
+    COMMA_LC = lcpair.second;
+
+    std::clog << "POINT_LC=" << POINT_LC << "; " "COMMA_LC=" << COMMA_LC << ";\n";
 
     auto session = Catch::Session();
     int result = session.run(argc, argv);
@@ -262,9 +260,10 @@ TEST_CASE("(new|free|dup)locale", "[polyC]") {
     locname = COMMA_LC;
 
     auto ploc_base = poly_newlocale(POLY_NUMERIC_MASK | POLY_COLLATE_MASK, locname.data(), ploc);
-    string_view ploc_name = polyloc_getname(ploc_base);
+    CAPTURE(errno);
     REQUIRE(ploc_base);
     REQUIRE(ploc_base == ploc);
+    string_view ploc_name = polyloc_getname(ploc_base);
     CHECK(ploc_name.find(locname) != string_view::npos);
 
     poly_freelocale(ploc);
@@ -385,15 +384,15 @@ TEST_CASE("string to PI", "[pi][strtod]")
     double result;
 
     SECTION("decimal point") {
-        auto en_us = locale_ptr(poly_newlocale(POLY_ALL_MASK, POINT_LC.c_str(), NULL));
-        result = poly_strtod_l(PI_point, NULL, en_us.get());
+        auto loc = locale_ptr(poly_newlocale(POLY_ALL_MASK, POINT_LC.c_str(), NULL));
+        result = poly_strtod_l(PI_point, NULL, loc.get());
         CAPTURE(PI_point);
         REQUIRE(result == PI);
     }
 
     SECTION("decimal comma") {
-        auto pt_br = locale_ptr(poly_newlocale(POLY_ALL_MASK, COMMA_LC.c_str(), NULL));
-        result = poly_strtod_l(PI_comma, NULL, pt_br.get());
+        auto loc = locale_ptr(poly_newlocale(POLY_ALL_MASK, COMMA_LC.c_str(), NULL));
+        result = poly_strtod_l(PI_comma, NULL, loc.get());
         CAPTURE(PI_comma, COMMA_LC);
         REQUIRE(result == PI);
     }
