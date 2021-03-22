@@ -264,18 +264,30 @@ TEST_CASE("sprintf_l tests", "[sprintf]")
     auto ploc = locale_ptr(poly_newlocale(POLY_ALL_MASK, "C", NULL));
     auto buffer = std::vector<char>(1024, '\3');
 
-    auto fmt_test = [&](const char* expected, const char* fmt, auto... args) {
-        test_print_format(expected, buffer.data(), fmt, ploc.get(), args...);
-    };
+    SECTION("other") {
+        auto fmt_test = [&](const char* expected, const char* fmt, auto... args) {
+            test_print_format(expected, buffer.data(), fmt, ploc.get(), args...);
+        };
 
-    SECTION("general") {
         fmt_test("bad fmt:  -.3M", "bad fmt: % -.3M", 321.1);
         fmt_test("bad fmt:  -.3M some other text", "bad fmt: % -.3M some other text", 321.1);
         fmt_test("a b     1", "%c %s     %d", 'a', "b", 1);
         fmt_test("abc     ", "%-8.3s", "abcdefgh");
     }
 
-    SECTION("600 width") {
+    SECTION("Return Nº of chars written to buffer minus null") {
+        auto test_return = [&](auto format, auto... args) {
+            return poly_sprintf_l(buffer.data(), format, ploc.get(), args...);
+        };
+
+        REQUIRE(test_return("Lorem ipsum %s sit amet, %s adipiscing %s.", "dolor", "consectetur", "elit") == 56);
+        REQUIRE(test_return("%#o %#x %#X", 10u, 30u, 60u) == 13);
+        REQUIRE(test_return("%.0x", 0) == 0);
+        REQUIRE(test_return("7 chars") == 7);
+        REQUIRE(test_return("number %f", 123.456789) == 17);
+    }
+
+    SECTION("Big width") {
         REQUIRE(poly_sprintf_l(buffer.data(), "%d  %600s", ploc.get(), 3, "abc") == 603);
     }
 
@@ -308,30 +320,41 @@ TEST_CASE("snprintf_l tests", "[snprintf]") {
     auto buffer = std::vector<char>(1000, '\3');
     using namespace std::literals;
 
-    SECTION("b 123") {
+    SECTION("other") {
         test_print_format_n(" b     123", buffer.data(), 100, " %s     %d", ploc.get(), "b", 123);
+        test_print_format_n("number 12", buffer.data(), 10, "number %f", ploc.get(), 123.456789);
     }
 
     SECTION("Large float") {
         const double pow_2_75 = 37778931862957161709568.0;
         auto pow_2_75_text = "37778931862957161709568.000000"sv;
+
         int retval = poly_snprintf_l(buffer.data(), 100, "%f", ploc.get(), pow_2_75);
         string_view result = buffer.data();
 
-        CHECK(retval == 30);
-        REQUIRE(result.substr(0, 17) == pow_2_75_text.substr(0, 17));
+        CHECK(result.substr(0, 17) == pow_2_75_text.substr(0, 17));
+        REQUIRE(result == pow_2_75_text);
     }
 
-    SECTION("Truncate") {
-        auto would_be_written = 
-            test_print_format_n("number 12", 
-                buffer.data(), 10, "number %f", ploc.get(), 123.456789);
+    SECTION("Return Nº of chars that would've been written to buffer if count was ignored minus null") {
+        auto test_return = [&](size_t cnt, auto format, auto... args) {
+            return poly_snprintf_l(buffer.data(), cnt, format, ploc.get(), args...);
+        };
 
-        REQUIRE(would_be_written == 17);
-    }
+        REQUIRE(test_return(60, "Lorem ipsum %s sit amet, %s adipiscing %s.", "dolor", "consectetur", "elit") == 56);
+        REQUIRE(test_return(39, "Lorem ipsum %s sit amet, %s adipiscing %s.", "dolor", "consectetur", "elit") == 56);
 
-    SECTION("Don't write if count==0, return necessary size") {
-        REQUIRE(poly_snprintf_l(buffer.data(), 0, "7 chars", ploc.get()) == 7);
+        REQUIRE(test_return(15, "%#o %#x %#X", 10u, 30u, 60u) == 13);
+        REQUIRE(test_return(4, "%#o %#x %#X", 10u, 30u, 60u) == 13);
+
+        REQUIRE(test_return(5, "%.0x", 0) == 0);
+        REQUIRE(test_return(0, "%.0x", 0) == 0);
+
+        REQUIRE(test_return(0, "7 chars") == 7);
+        REQUIRE(test_return(10, "7 chars") == 7);
+
+        REQUIRE(test_return(10, "number %f", 123.456789) == 17);
+        REQUIRE(test_return(20, "number %f", 123.456789) == 17);
     }
 
     SECTION("Large paddings") {
@@ -344,7 +367,7 @@ TEST_CASE("snprintf_l tests", "[snprintf]") {
     }
 }
 
-TEST_CASE("PI to string", "[pi][snprintf]")
+TEST_CASE("PI to string", "[snprintf]")
 {
     const auto PI = 3.141592653;
     auto buffer = string(25, '\3');
@@ -369,7 +392,7 @@ TEST_CASE("PI to string", "[pi][snprintf]")
     }
 }
 
-TEST_CASE("string to PI", "[pi][strtod]")
+TEST_CASE("string to PI", "[strtod]")
 {
     auto PI_point = "3.1416";
     auto PI_comma = "3,1416";
@@ -392,13 +415,12 @@ TEST_CASE("string to PI", "[pi][strtod]")
 
 }
 
-using namespace std::literals;
-
 TEST_CASE("Wide strings", "[wide]")
 {
     auto loc = locale_ptr(poly_newlocale(POLY_ALL_MASK, "en_US.utf8", NULL));
     auto buffer = string(128, '\3');
     int ret;
+    using namespace std::literals;
 
     SECTION("%S") {
         auto expected = u8"%S: áéíóú"s;
@@ -417,40 +439,13 @@ TEST_CASE("Wide strings", "[wide]")
 
 }
 
-TEST_CASE("printf (cout)", "[printf][.]")
+TEST_CASE("printf returns chars written to stream")
 {
+    using namespace std::literals;
     auto loc = locale_ptr(poly_newlocale(POLY_ALL_MASK, "C", NULL));
     auto expected = "Lorem ipsum dolor sit amet, consectetur adipiscing elit.\n"sv;
-    auto fmt = "Lorem ipsum %s sit amet, %s adipiscing %s.\n";
+    auto format = "Lorem ipsum %s sit amet, %s adipiscing %s.\n";
     
-    auto result = poly_printf_l(fmt, loc.get(), "dolor", "consectetur", "elit");
+    auto result = poly_printf_l(format, loc.get(), "dolor", "consectetur", "elit");
     REQUIRE(result == expected.size());
-}
-
-
-#include "impl/printf_fmt.hpp"
-
-TEST_CASE("printf tokenizer", "[token][.]")
-{
-    using red::polyloc::fmt_tokenizer;
-    using std::cout; using std::quoted;
-
-
-    auto input = "o rato roeu %c roupa do rei de roma %10.5d:%10.5d %o69%x %X lorem ipsum %.2d %.1d%% %"s;
-    fmt_tokenizer fmt_tok(input);
-    
-    cout << "Tokenizer lab" "\n\n"
-         << "fmt_tokenizer:\n";
-    for (auto& t : fmt_tok) {
-        cout << quoted(t) << ", ";
-    }
-
-    boost::char_separator<char> sep{ "%" };
-    boost::tokenizer<boost::char_separator<char>> boost_tok{ input, sep };
-
-    cout << "\n" "boost char_separator('%'):\n";
-    for (auto& t : boost_tok) {
-        cout << quoted(t) << ", ";
-    }
-    cout << '\n';
 }
