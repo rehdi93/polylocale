@@ -70,11 +70,11 @@ private:
 using arg_variant = std::variant<char, wchar_t, char*, wchar_t*, void*, int64_t, uint64_t, long double>;
 
 
-void apply_flags(std::ostream& os, fmtspec_t const& fmts)
+void apply_flags(std::ostream& os, fmtspec_t& fmts)
 {
     using namespace red::polyloc;
 
-    os.flags(fmts.iosflags);
+    auto oldflags = os.flags(fmts.iosflags);
 
     if ((fmts.moreflags & moreflags::zerofill) != 0) {
         os.fill('0');
@@ -88,6 +88,10 @@ void apply_flags(std::ostream& os, fmtspec_t const& fmts)
         }
     }
     // blankpos requires the value
+
+    if (oldflags != fmts.iosflags) {
+        fmts.iosflags = os.flags();
+    }
 }
 
 // field width, precision
@@ -119,7 +123,7 @@ auto extract_value(fmtspec_t const& fmts, va_list* pva)
             val = (wchar_t)arg;
         }
         else {
-            auto arg = va_arg(*pva, int);
+            auto arg = va_arg(*pva, int); // intentional
             val = (char)arg;
         }
         break;
@@ -306,7 +310,7 @@ int red::polyloc::do_printf(string_view fmt, std::ostream& outs, va_list args)
     fo.push(outs);
     fo.copyfmt(outs);
 
-    //auto wconv = wconverter(new cvt_t(fo.getloc().name()));
+    auto wconv = wconverter(new cvt_t(fo.getloc().name()));
 
     auto fmtcopy = std::string(fmt);
     fmt_tokenizer toknz{ fmtcopy };
@@ -326,7 +330,6 @@ int red::polyloc::do_printf(string_view fmt, std::ostream& outs, va_list args)
                 // prepare
                 apply_fwpr(fo, fmtspec, &va);
                 apply_flags(fo, fmtspec);
-                fmtspec.iosflags = fo.flags();
 
                 auto value = extract_value(fmtspec, &va);
                 put(fo, value, fmtspec);

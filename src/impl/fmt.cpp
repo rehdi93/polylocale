@@ -38,7 +38,7 @@ bool isfmtlength(char ch) noexcept
     return isCharOneOf(ch, FMT_LENGTHMOD);
 }
 
-bool isfmtchar(char ch)
+bool isfmtchar(char ch) noexcept
 {
     return isCharOneOf(ch, FMT_SPECIAL FMT_TYPE FMT_FLAGS FMT_LENGTHMOD) 
         || isdigit(ch, std::locale::classic());

@@ -8,9 +8,7 @@ namespace red::polyloc
     bool isfmtflag(char ch) noexcept;
     bool isfmttype(char ch) noexcept;
     bool isfmtlength(char ch) noexcept;
-    bool isfmtchar(char ch);
-
-
+    bool isfmtchar(char ch) noexcept;
 
     struct fmt_separator
     {
@@ -55,8 +53,6 @@ namespace red::polyloc
 
         // the full format specefier
         red::string_view fmt;
-        // views into fmt
-        //red::string_view flags, length_mod;
         
         // values
         int field_width = VAL_AUTO, precision = VAL_AUTO;

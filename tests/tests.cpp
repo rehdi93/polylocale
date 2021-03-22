@@ -142,7 +142,8 @@ int main(int argc, char* argv[]) {
     return result;
 }
 
-auto resetBuffer(std::vector<char>& range)
+template<class Rng>
+auto resetBuffer(Rng& range)
 {
     using namespace std;
     fill(begin(range), end(range), '\3');
@@ -314,18 +315,18 @@ TEST_CASE("snprintf_l tests", "[snprintf]") {
     auto ploc = locale_ptr(poly_newlocale(POLY_ALL_MASK, "C", NULL));
     auto buffer = std::vector<char>(1000, '\3');
 
-    const double pow_2_75 = 37778931862957161709568.0;
     using namespace std::literals;
 
     test_print_format(" b     123", buffer.data(), " %s     %d",ploc.get(), "b", 123);
 
     SECTION("Large float") {
-        auto expected = "37778931862957161709568.000000"sv;
+        const double pow_2_75 = 37778931862957161709568.0;
+        auto pow_2_75_text = "37778931862957161709568.000000"sv;
         int retval = poly_snprintf_l(buffer.data(), 100, "%f", ploc.get(), pow_2_75);
         string_view result = buffer.data();
 
         CHECK(retval == 30);
-        REQUIRE(expected.substr(0, 17) ==  result.substr(0, 17));
+        REQUIRE(result.substr(0, 17) == pow_2_75_text.substr(0, 17));
     }
 
     SECTION("Truncate") {
