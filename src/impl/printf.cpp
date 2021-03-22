@@ -102,9 +102,12 @@ void apply_fwpr(std::ostream& os, fmtspec_t& fmts, va_list* pva)
     
     if (fmts.precision == fmts.VAL_VA)
         fmts.precision = va_arg(*pva, int);
-    
-    os.width(fmts.field_width > 0 ? fmts.field_width : 0);
-    os.precision(fmts.precision > 0 ? fmts.precision : 0);
+
+    if (fmts.field_width > fmts.VAL_AUTO)
+        os.width(fmts.field_width);
+
+    if (fmts.precision > fmts.VAL_AUTO)
+        os.precision(fmts.precision);
 }
 
 auto extract_value(fmtspec_t const& fmts, va_list* pva)
@@ -178,11 +181,7 @@ void put_fp(long double number, fmtspec_t const& fmts, std::ostream& os)
     if ((fmts.moreflags & mf::blankpos) != 0 && number >= 0)
         os.put(' ');
 
-    if (fmts.precision == -1)
-    {
-        os.precision(6);
-    }
-    else if (fmts.precision == 0)
+    if (fmts.precision == 0)
     {
         number = std::round(number);
     }
@@ -227,13 +226,12 @@ void put_int(T val, fmtspec_t const& fmts, std::ostream& os)
 
     if (fmts.precision > 0)
     {
-        auto remainingW = fmts.field_width - fmts.precision;
-        if (remainingW > 0)
+        // precision in this case is the minimum number of digits to write
+        auto padding = fmts.field_width - fmts.precision;
+        if (padding > 0)
         {
-            char s = ' ';
-            os.width(remainingW);
-            os.fill(s);
-            os << s;
+            os.width(padding);
+            os << ' ';
         }
 
         os.width(fmts.precision);
@@ -332,10 +330,8 @@ int red::polyloc::do_printf(string_view fmt, std::ostream& outs, va_list args)
                 apply_flags(fo, fmtspec);
 
                 auto value = extract_value(fmtspec, &va);
-                if (std::holds_alternative<wchar_t>(value) || std::holds_alternative<wchar_t*>(value)) {
-                    if (!wconv) {
-                        wconv.reset(new wconverter(new cvt_t(fo.getloc().name())));
-                    }
+                if (!wconv && std::holds_alternative<wchar_t>(value) || std::holds_alternative<wchar_t*>(value)) {
+                    wconv.reset(new wconverter(new cvt_t(fo.getloc().name())));
                 }
 
                 put(fo, value, fmtspec, wconv.get());
