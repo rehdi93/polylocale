@@ -149,7 +149,6 @@ auto test_print_format(string expected, char* buffer, string format, poly_locale
     string_view result = buffer;
 
     CAPTURE(format, expected.size(), result.size());
-    REQUIRE(retval == result.size());
     CHECK(expected == result);
 }
 
@@ -171,7 +170,9 @@ TEST_CASE("Formating integers", "[sprintf][format]")
     auto ploc = locale_ptr(poly_newlocale(POLY_ALL_MASK, "C", NULL));
     auto buffer = std::vector<char>(100, '\3');
 
-#define TEST_FMT(expected, fmt, ...) test_print_format(expected, buffer.data(), fmt, ploc.get(), __VA_ARGS__)
+    auto TEST_FMT = [&](const char* expected, const char* format, auto... args) {
+        test_print_format(expected, buffer.data(), format, ploc.get(), args...);
+    };
 
     TEST_FMT("1210", "%d1%u", 12, 0);
     TEST_FMT("0177 0", "%# +o %#o", 127, 0);
@@ -193,17 +194,16 @@ TEST_CASE("Formating integers", "[sprintf][format]")
     TEST_FMT("100% win rate!", "%d%% win rate!", 100);
     TEST_FMT("+1024 -768", "%+lli % ld", 1024ll, -768l);
     TEST_FMT("24 25", "%hu %hhd", (unsigned short)24, (char)25);
-
-#undef TEST_FMT
 }
 
 TEST_CASE("Formating floating point", "[sprintf][format]")
 {
     auto ploc = locale_ptr(poly_newlocale(POLY_ALL_MASK, "C", NULL));
     auto buffer = std::vector<char>(100, '\3');
-    const double pow_2_85 = 38685626227668133590597632.0;
 
-#define TEST_FMT(expected, fmt, ...) test_print_format(expected, buffer.data(), fmt, ploc.get(), __VA_ARGS__)
+    auto TEST_FMT = [&](const char* expected, const char* format, auto... args) {
+        test_print_format(expected, buffer.data(), format, ploc.get(), args...);
+    };
 
     TEST_FMT("-3.000000", "%f", -3.0);
     TEST_FMT("-8.8888888800", "%.10f", -8.88888888);
@@ -215,6 +215,7 @@ TEST_CASE("Formating floating point", "[sprintf][format]")
     TEST_FMT("0.0       ", "%-10.1f", 0.);
     TEST_FMT("-0.000000", "%f", -0.);
     TEST_FMT("0.000001", "%f", 9.09834e-07);
+    const auto pow_2_85 = 38685626227668133590597632.0;
     TEST_FMT("38685626227668133590597632.0", "%.1f", pow_2_85);
     TEST_FMT("0.000000499999999999999977", "%.24f", 5e-7);
     TEST_FMT("0.000000000000000020000000", "%.24f", 2e-17);
@@ -232,8 +233,6 @@ TEST_CASE("Formating floating point", "[sprintf][format]")
     TEST_FMT(" 3.7 3.71", "% .3g %.3g", 3.704, 3.706);
     TEST_FMT("2e-315:1e+308", "%g:%g", 2e-315, 1e+308);
     TEST_FMT("42.1540000", "%#0-10.3f", 42.1539);
-
-#undef TEST_FMT
 }
 
 TEST_CASE("(new|free|dup)locale", "[polyC]") {
@@ -293,16 +292,14 @@ TEST_CASE("Size handler bug", "[bug]")
     auto ploc = locale_ptr(poly_newlocale(POLY_ALL_MASK, "C", NULL));
     auto buffer = std::vector<char>(50, '\3');
 
-    intmax_t j = -1;
-    int z = 2;
-    ptrdiff_t t = -3;
+    intmax_t j = -1; int z = 2; ptrdiff_t t = -3;
     std::string expected = "-1 2 -3";
     auto format = "%ji %zi %ti";
 
-    int returnValue = poly_sprintf_l(buffer.data(), format, ploc.get(), j, z, t);
+    poly_sprintf_l(buffer.data(), format, ploc.get(), j, z, t);
     string result = buffer.data();
 
-    CAPTURE(format, returnValue, expected.size(), j,z,t);
+    CAPTURE(format, expected.size(), j,z,t);
     REQUIRE(expected == result);
 }
 
@@ -334,8 +331,7 @@ TEST_CASE("snprintf_l tests", "[snprintf]") {
     }
 
     SECTION("Don't write if count==0, return necessary size") {
-        int ret = poly_snprintf_l(buffer.data(), 0, "7 chars", ploc.get());
-        REQUIRE(ret == 7);
+        REQUIRE(poly_snprintf_l(buffer.data(), 0, "7 chars", ploc.get()) == 7);
     }
 
     SECTION("Large paddings") {
@@ -357,16 +353,16 @@ TEST_CASE("PI to string", "[pi][snprintf]")
     CAPTURE(fmt);
 
     SECTION("decimal point") {
-        auto en_us = locale_ptr(poly_newlocale(POLY_ALL_MASK, POINT_LC.c_str(), NULL));
-        poly_snprintf_l(buffer.data(), 25, fmt, en_us.get(), PI);
+        auto ploc = locale_ptr(poly_newlocale(POLY_ALL_MASK, POINT_LC.c_str(), NULL));
+        poly_snprintf_l(buffer.data(), 25, fmt, ploc.get(), PI);
         string_view result = buffer.c_str();
         CAPTURE(POINT_LC);
         REQUIRE(result == "3.1416");
     }
 
     SECTION("decimal comma") {
-        auto pt_br = locale_ptr(poly_newlocale(POLY_ALL_MASK, COMMA_LC.c_str(), NULL));
-        poly_snprintf_l(buffer.data(), 25, fmt, pt_br.get(), PI);
+        auto ploc = locale_ptr(poly_newlocale(POLY_ALL_MASK, COMMA_LC.c_str(), NULL));
+        poly_snprintf_l(buffer.data(), 25, fmt, ploc.get(), PI);
         string_view result = buffer.c_str();
         CAPTURE(COMMA_LC);
         REQUIRE(result == "3,1416");
