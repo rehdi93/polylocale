@@ -24,7 +24,6 @@ static_assert(std::is_same_v<locale_t, poly_locale*>, "locale_t is not poly_loca
 using locale_ptr_t = std::unique_ptr<poly_locale, decltype(poly_freelocale)*>;
 locale_ptr_t locale_ptr(poly_locale* ploc) { return locale_ptr_t(ploc, poly_freelocale); }
 
-
 // look for a locale by decimal point
 static auto find_num_locale(char dp) -> std::string
 {
@@ -142,37 +141,26 @@ int main(int argc, char* argv[]) {
     return result;
 }
 
-template<class Rng>
-auto resetBuffer(Rng& range)
-{
-    using namespace std;
-    fill(begin(range), end(range), '\3');
-}
-
 
 template<typename ...VA>
 auto test_print_format(string expected, char* buffer, string format, poly_locale_t loc, VA... args)
 {
-    auto fmt = format.c_str();
-    int retval = poly_sprintf_l(buffer, fmt, loc, args...);
-
+    int retval = poly_sprintf_l(buffer, format.c_str(), loc, args...);
     string_view result = buffer;
 
-    CAPTURE(fmt);
-    REQUIRE(expected == result);
-    REQUIRE(retval == expected.size());
+    CAPTURE(format, expected.size(), result.size());
+    REQUIRE(retval == result.size());
+    CHECK(expected == result);
 }
 
 template<typename ...VA>
 auto test_print_format_n(string expected, char* buffer, size_t count, string format, poly_locale_t loc, VA... args)
 {
-    auto fmt = format.c_str();
-    int retval = poly_snprintf_l(buffer, count, fmt, loc, args...);
-
+    int retval = poly_snprintf_l(buffer, count, format.c_str(), loc, args...);
     string_view result = buffer;
 
-    CAPTURE(format);
-    REQUIRE(expected == result);
+    CAPTURE(format, expected.size(), result.size());
+    CHECK(expected == result);
 
     return retval;
 }
@@ -206,6 +194,7 @@ TEST_CASE("Formating integers", "[sprintf][format]")
     TEST_FMT("+1024 -768", "%+lli % ld", 1024ll, -768l);
     TEST_FMT("24 25", "%hu %hhd", (unsigned short)24, (char)25);
 
+#undef TEST_FMT
 }
 
 TEST_CASE("Formating floating point", "[sprintf][format]")
@@ -243,6 +232,8 @@ TEST_CASE("Formating floating point", "[sprintf][format]")
     TEST_FMT(" 3.7 3.71", "% .3g %.3g", 3.704, 3.706);
     TEST_FMT("2e-315:1e+308", "%g:%g", 2e-315, 1e+308);
     TEST_FMT("42.1540000", "%#0-10.3f", 42.1539);
+
+#undef TEST_FMT
 }
 
 TEST_CASE("(new|free|dup)locale", "[polyC]") {
@@ -318,10 +309,11 @@ TEST_CASE("Size handler bug", "[bug]")
 TEST_CASE("snprintf_l tests", "[snprintf]") {
     auto ploc = locale_ptr(poly_newlocale(POLY_ALL_MASK, "C", NULL));
     auto buffer = std::vector<char>(1000, '\3');
-
     using namespace std::literals;
 
-    test_print_format(" b     123", buffer.data(), " %s     %d",ploc.get(), "b", 123);
+    SECTION("b 123") {
+        test_print_format_n(" b     123", buffer.data(), 100, " %s     %d", ploc.get(), "b", 123);
+    }
 
     SECTION("Large float") {
         const double pow_2_75 = 37778931862957161709568.0;
