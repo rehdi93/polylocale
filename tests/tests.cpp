@@ -439,13 +439,21 @@ TEST_CASE("Wide strings", "[wide]")
 
 }
 
-TEST_CASE("printf returns chars written to stream")
+TEST_CASE("printf tests")
 {
     using namespace std::literals;
     auto loc = locale_ptr(poly_newlocale(POLY_ALL_MASK, "C", NULL));
     auto expected = "Lorem ipsum dolor sit amet, consectetur adipiscing elit.\n"sv;
     auto format = "Lorem ipsum %s sit amet, %s adipiscing %s.\n";
+
+    // trick to intercept the output of cout
+    std::ostringstream local;
+    auto cout_buf = std::cout.rdbuf(local.rdbuf());
     
     auto result = poly_printf_l(format, loc.get(), "dolor", "consectetur", "elit");
+
+    std::cout.rdbuf(cout_buf);
+
     REQUIRE(result == expected.size());
+    REQUIRE(local.str() == expected);
 }

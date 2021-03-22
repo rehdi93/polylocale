@@ -31,7 +31,6 @@
 using std::ios;
 using red::polyloc::fmtspec_t;
 using namespace std::literals;
-namespace io = boost::iostreams;
 
 // HELPERS
 namespace
@@ -280,8 +279,10 @@ int red::polyloc::do_printf(string_view format, std::ostream& outs, const std::l
     return do_printf(format, outs, args);
 }
 
-int red::polyloc::do_printf(string_view fmt, std::ostream& outs, va_list args)
+int red::polyloc::do_printf(string_view fmt, std::ostream& stream, va_list args)
 {
+    namespace io = boost::iostreams;
+
     if (fmt.empty())
         return 0;
 
@@ -302,11 +303,10 @@ int red::polyloc::do_printf(string_view fmt, std::ostream& outs, va_list args)
     auto va = args;
 #endif // __GNUC__
 
-    io::counter cnt;
-    io::filtering_ostream fo;
-    fo.push(boost::ref(cnt));
-    fo.push(outs);
-    fo.copyfmt(outs);
+    io::filtering_ostream os;
+    os.push(io::counter());
+    os.push(stream);
+    os.copyfmt(stream);
 
     std::unique_ptr<wconverter> wconv;
 
@@ -320,30 +320,30 @@ int red::polyloc::do_printf(string_view fmt, std::ostream& outs, va_list args)
             auto fmtspec = parsefmt(tok);
             if (!fmtspec) {
                 // invalid format
-                fo << fmtspec.fmt.substr(1);
+                os << fmtspec.fmt.substr(1);
             }
             else {
-                ios_saver<char> _g_(fo);
+                ios_saver<char> _g_(os);
 
                 // prepare
-                apply_fwpr(fo, fmtspec, &va);
-                apply_flags(fo, fmtspec);
+                apply_fwpr(os, fmtspec, &va);
+                apply_flags(os, fmtspec);
 
                 auto value = extract_value(fmtspec, &va);
                 if (!wconv && std::holds_alternative<wchar_t>(value) || std::holds_alternative<wchar_t*>(value)) {
-                    wconv.reset(new wconverter(new cvt_t(fo.getloc().name())));
+                    wconv.reset(new wconverter(new cvt_t(os.getloc().name())));
                 }
 
-                put(fo, value, fmtspec, wconv.get());
+                put(os, value, fmtspec, wconv.get());
             }
         }
         else
         {
-            fo << tok;
+            os << tok;
         }
     }
 
-    return cnt.characters();
+    return os.component<io::counter>(0)->characters();
 }
 
 

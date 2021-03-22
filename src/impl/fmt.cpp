@@ -55,14 +55,13 @@ bool fmt_separator::operator() (iterator& next, iterator end, token_type& token)
         if (*std::next(start) == FMT_START) {
             // escaped %
             token.assign(1, FMT_START);
-            auto& ch = *std::next(start);
             next += 2;
             return true;
         }
         else {
             // possible printf fmt
             // "%# +o| %#o" "%10.5d|:%10.5d"
-            auto fmtend = std::find_if(next, end, isfmttype);
+            auto fmtend = find_if(next, end, isfmttype);
             next = fmtend != end ? fmtend + 1 : end;
             token.assign(start, next);
             return true;

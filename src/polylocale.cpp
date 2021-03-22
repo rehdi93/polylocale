@@ -13,6 +13,9 @@
 #include <boost/iostreams/stream_buffer.hpp>
 #include <boost/iostreams/device/array.hpp>
 
+#ifdef __GNUC__
+#include <ext/stdio_filebuf.h>
+#endif
 
 
 struct poly_locale
@@ -67,14 +70,12 @@ static auto mask_to_cat(int mask) noexcept -> std::locale::category
 }
 
 // helpers
-namespace io = boost::iostreams;
-
 template<typename Char>
 class unbound_sink
 {
 public:
     using char_type = Char;
-    using category = io::sink_tag;
+    using category = boost::iostreams::sink_tag;
 
     explicit unbound_sink(char_type* begin) : cur_(begin)
     {}
@@ -89,8 +90,8 @@ private:
     char_type* cur_;
 };
 
-using unsafe_buf = io::stream_buffer<unbound_sink<char>>;
-using array_buf = io::stream_buffer<io::array>;
+using unsafe_buf = boost::iostreams::stream_buffer<unbound_sink<char>>;
+using array_buf = boost::iostreams::stream_buffer<boost::iostreams::array>;
 
 
 extern "C" {
@@ -171,7 +172,6 @@ poly_locale_t poly_uselocale(poly_locale_t nloc)
     return tl_locale;
 }
 
-// ---
 
 double poly_strtod_l(const char* str, char** endptr, poly_locale_t ploc)
 {
@@ -210,8 +210,7 @@ int poly_printf_l(const char* fmt, poly_locale_t locale, ...)
 
 int poly_vprintf_l(const char* fmt, poly_locale_t locale, va_list args)
 {
-    auto result = red::polyloc::do_printf(fmt, std::cout, cpploc(locale), args);
-    return result;
+    return red::polyloc::do_printf(fmt, std::cout, cpploc(locale), args);
 }
 
 
@@ -226,7 +225,6 @@ int poly_sprintf_l(char* buffer, const char* fmt, poly_locale_t loc, ...)
     va_end(va);
     return result;
 }
-
 
 int poly_vsprintf_l(char* buffer, const char* fmt, poly_locale_t loc, va_list args)
 {
@@ -272,10 +270,6 @@ int poly_fprintf_l(FILE* fs, const char* format, poly_locale_t locale, ...)
     va_end(va);
     return result;
 }
-
-#ifdef __GNUC__
-#include <ext/stdio_filebuf.h>
-#endif
 
 int poly_vfprintf_l(FILE* cfile, const char* fmt, poly_locale_t loc, va_list args)
 {
