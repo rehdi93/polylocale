@@ -149,7 +149,6 @@ auto resetBuffer(Rng& range)
     fill(begin(range), end(range), '\3');
 }
 
-// bp condition: strcmp(dbgfmt, "...")==0
 
 template<typename ...VA>
 auto test_print_format(string expected, char* buffer, string format, poly_locale_t loc, VA... args)
@@ -275,6 +274,17 @@ TEST_CASE("sprintf_l tests", "[sprintf]")
     auto ploc = locale_ptr(poly_newlocale(POLY_ALL_MASK, "C", NULL));
     auto buffer = std::vector<char>(1024, '\3');
 
+    auto fmt_test = [&](const char* expected, const char* fmt, auto... args) {
+        test_print_format(expected, buffer.data(), fmt, ploc.get(), args...);
+    };
+
+    SECTION("general") {
+        fmt_test("bad fmt:  -.3M", "bad fmt: % -.3M", 321.1);
+        fmt_test("bad fmt:  -.3M some other text", "bad fmt: % -.3M some other text", 321.1);
+        fmt_test("a b     1", "%c %s     %d", 'a', "b", 1);
+        fmt_test("abc     ", "%-8.3s", "abcdefgh");
+    }
+
     SECTION("600 width") {
         REQUIRE(poly_sprintf_l(buffer.data(), "%d  %600s", ploc.get(), 3, "abc") == 603);
     }
@@ -285,12 +295,6 @@ TEST_CASE("sprintf_l tests", "[sprintf]")
         CAPTURE(retval, result);
         REQUIRE(result == "");
     }
-
-    test_print_format("bad fmt:  -.3M", buffer.data(), "bad fmt: % -.3M", ploc.get(), 321.1);
-    test_print_format("bad fmt:  -.3M some other text", 
-        buffer.data(), "bad fmt: % -.3M some other text", ploc.get(), 321.1);
-    test_print_format("a b     1", buffer.data(), "%c %s     %d", ploc.get(), 'a', "b", 1);
-    test_print_format("abc     ", buffer.data(), "%-8.3s", ploc.get(), "abcdefgh");
 }
 
 TEST_CASE("Size handler bug", "[bug]")
@@ -301,13 +305,13 @@ TEST_CASE("Size handler bug", "[bug]")
     intmax_t j = -1;
     int z = 2;
     ptrdiff_t t = -3;
-    std::string expected = "-1 2 -3", result;
+    std::string expected = "-1 2 -3";
+    auto format = "%ji %zi %ti";
 
-    int returnValue = poly_sprintf_l(buffer.data(), "%ji %zi %ti", ploc.get(), j, z, t);
-    result = buffer.data();
+    int returnValue = poly_sprintf_l(buffer.data(), format, ploc.get(), j, z, t);
+    string result = buffer.data();
 
-    CAPTURE(returnValue, expected.size(), j,z,t);
-    INFO(R"(Format = "%ji %zi %ti")");
+    CAPTURE(format, returnValue, expected.size(), j,z,t);
     REQUIRE(expected == result);
 }
 
@@ -381,7 +385,7 @@ TEST_CASE("string to PI", "[pi][strtod]")
 {
     auto PI_point = "3.1416";
     auto PI_comma = "3,1416";
-    const double PI =3.1416;
+    const double PI= 3.1416;
     double result;
 
     SECTION("decimal point") {
