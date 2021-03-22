@@ -25,6 +25,7 @@ namespace red::polyloc
 
     enum class fmttype
     {
+        error=-1,
         char_,
         string,
         sint,
@@ -49,8 +50,6 @@ namespace red::polyloc
     {
         static const int VAL_VA = -2, VAL_AUTO = -1;
         
-        bool error = false;
-
         // the full format specefier
         red::string_view fmt;
         
@@ -59,7 +58,11 @@ namespace red::polyloc
         
         long iosflags = 0;
         long moreflags = 0;
-        fmttype type;
+        fmttype type = fmttype::error;
+
+        explicit operator bool() const {
+            return type != fmttype::error;
+        }
     };
 
     fmtspec_t parsefmt(red::string_view spec);

@@ -197,9 +197,9 @@ void put_str(red::string_view str, fmtspec_t const& fmts, std::ostream& os) {
         os << str;
 }
 
-void put_str(red::wstring_view str, fmtspec_t const& fmts, std::ostream& os) {
-    auto conv = wconverter(new cvt_t(os.getloc().name()));
-    std::string tmp = conv.to_bytes(str.data(), str.data() + str.size());
+void put_str(red::wstring_view str, fmtspec_t const& fmts, std::ostream& os, wconverter* wconv) {
+    assert(wconv && "wconv is null!");
+    std::string tmp = wconv->to_bytes(str.data(), str.data() + str.size());
     put_str(tmp, fmts, os);
 }
 
@@ -243,20 +243,20 @@ void put_int(T val, fmtspec_t const& fmts, std::ostream& os)
     os << val;
 }
 
-void put(std::ostream& os, arg_variant const& value, fmtspec_t const& fmts) {
+void put(std::ostream& os, arg_variant const& value, fmtspec_t const& fmts, wconverter* wconv) {
     using std::get_if;
 
     if (auto ptr = get_if<char>(&value)) {
         put_str({ ptr, 1 }, fmts, os);
     }
     else if (auto ptr = get_if<wchar_t>(&value)) {
-        put_str({ ptr, 1 }, fmts, os);
+        put_str({ ptr, 1 }, fmts, os, wconv);
     }
     else if (auto ptr = get_if<char*>(&value)) {
         put_str(*ptr, fmts, os);
     }
     else if (auto ptr = get_if<wchar_t*>(&value)) {
-        put_str(*ptr, fmts, os);
+        put_str(*ptr, fmts, os, wconv);
     }
     else if (auto ptr = get_if<void*>(&value)) {
         os << std::hex << ptr;
@@ -310,7 +310,7 @@ int red::polyloc::do_printf(string_view fmt, std::ostream& outs, va_list args)
     fo.push(outs);
     fo.copyfmt(outs);
 
-    auto wconv = wconverter(new cvt_t(fo.getloc().name()));
+    std::unique_ptr<wconverter> wconv;
 
     auto fmtcopy = std::string(fmt);
     fmt_tokenizer toknz{ fmtcopy };
@@ -320,7 +320,7 @@ int red::polyloc::do_printf(string_view fmt, std::ostream& outs, va_list args)
         if (tok.size() >= 2 && tok[0] == FMT_START)
         {
             auto fmtspec = parsefmt(tok);
-            if (fmtspec.error) {
+            if (!fmtspec) {
                 // invalid format
                 fo << fmtspec.fmt.substr(1);
             }
@@ -332,7 +332,13 @@ int red::polyloc::do_printf(string_view fmt, std::ostream& outs, va_list args)
                 apply_flags(fo, fmtspec);
 
                 auto value = extract_value(fmtspec, &va);
-                put(fo, value, fmtspec);
+                if (std::holds_alternative<wchar_t>(value) || std::holds_alternative<wchar_t*>(value)) {
+                    if (!wconv) {
+                        wconv.reset(new wconverter(new cvt_t(fo.getloc().name())));
+                    }
+                }
+
+                put(fo, value, fmtspec, wconv.get());
             }
         }
         else

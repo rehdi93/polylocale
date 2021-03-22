@@ -1,7 +1,7 @@
 // polyimpl.h
 #pragma once
 
-#if __cplusplus >= 201703L
+#if __cplusplus >= 201700L
     #include <string_view>
 #else
     #include "boost/utility/string_view.hpp"
@@ -35,7 +35,7 @@ namespace red
         if constexpr (std::is_same_v<charT, char>) {
             val = strtol(pbeg, &pend, base);
         }
-        else if constexpr (std::is_same_v<charT, wchar_t>) {
+        else {
             val = wcstol(pbeg, &pend, base);
         }
 

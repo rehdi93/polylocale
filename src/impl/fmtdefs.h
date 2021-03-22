@@ -8,10 +8,9 @@
 #define FMT_POINTER       "p"
 #define FMT_SINT          "di"
 #define FMT_UINT          "uoxX"
-#define FMT_INTEGER       FMT_SINT FMT_UINT
 #define FMT_FLOATING_PT   "FfEeAaGg"
 
-#define FMT_TYPE          FMT_CHAR FMT_STRING FMT_POINTER FMT_INTEGER FMT_FLOATING_PT
+#define FMT_TYPE          FMT_CHAR FMT_STRING FMT_POINTER FMT_SINT FMT_UINT FMT_FLOATING_PT
 #define FMT_FLAGS         "-+#0 "
 #define FMT_LENGTHMOD     "hljztLI"
 #define FMT_SPECIAL       "%.*"

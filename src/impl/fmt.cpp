@@ -7,9 +7,6 @@
 
 #include "fmtdefs.h"
 
-using std::begin; using std::end;
-using std::find;
-
 using red::string_view; using std::string;
 
 //template<class Iter, typename Ch>
@@ -116,23 +113,23 @@ fmtspec_t parsefmt(string_view spec)
         using iof = std::ios_base;
         using mf = moreflags::Enum;
 
-        auto typein = [=](string_view chars) {
+        auto isType = [=](string_view chars) {
             return chars.find(typech) != string::npos;
         };
 
-        if (typein(FMT_CHAR)) { // chars
+        if (isType(FMT_CHAR)) { // chars
             fmtspec.type = ft::char_;
         }
-        else if (typein(FMT_STRING)) { // strings
+        else if (isType(FMT_STRING)) { // strings
             fmtspec.type = ft::string;
         }
-        else if (typein(FMT_SINT)) { // integers
+        else if (isType(FMT_SINT)) { // integers
             fmtspec.type = ft::sint;
         }
-        else if (typein(FMT_UINT)) {
+        else if (isType(FMT_UINT)) {
             fmtspec.type = ft::uint;
         }
-        else if (typein(FMT_FLOATING_PT)) { // floating point
+        else if (isType(FMT_FLOATING_PT)) { // floating point
             fmtspec.type = ft::floatpt;
         }
         else if (typech == 'p') {
@@ -221,7 +218,7 @@ fmtspec_t parsefmt(string_view spec)
             }
             // are we 64-bit (unix style)
             else if (length == "l") {
-                if (typein("cs") || sizeof(long) == 8)
+                if (isType("cs") || sizeof(long) == 8)
                     fmtspec.moreflags |= mf::wide;
             }
             else if (length == "ll") {
@@ -269,10 +266,6 @@ fmtspec_t parsefmt(string_view spec)
                 // no conversion took place
             }
         }
-    }
-    else
-    {
-        fmtspec.error = true;
     }
 
     return fmtspec;
