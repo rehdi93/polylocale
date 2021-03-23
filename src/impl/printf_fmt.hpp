@@ -50,9 +50,7 @@ namespace red::polyloc
         
         // values
         int field_width = VAL_AUTO, precision = VAL_AUTO;
-        
-        long iosflags = 0;
-        long moreflags = 0;
+        long iosflags = 0, moreflags = 0;
         fmttype type = fmttype::error;
 
         explicit operator bool() const {

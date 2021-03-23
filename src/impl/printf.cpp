@@ -10,7 +10,6 @@
 
 #include "printf.hpp"
 #include "printf_fmt.hpp"
-//#include "bitmask.hpp"
 #include "fmtdefs.h"
 #include "boost/io/ios_state.hpp"
 #include "boost/iostreams/filter/counter.hpp"
@@ -172,7 +171,6 @@ auto extract_value(fmtspec_t const& fmts, va_list* pva)
     return val;
 }
 
-
 void put_fp(long double number, fmtspec_t const& fmts, std::ostream& os)
 {
     using mf = red::polyloc::moreflags::Enum;
@@ -281,30 +279,32 @@ int red::polyloc::do_printf(string_view format, std::ostream& outs, const std::l
 
 int red::polyloc::do_printf(string_view fmt, std::ostream& stream, va_list args)
 {
-    namespace io = boost::iostreams;
+    using boost::iostreams::filtering_ostream;
+    using boost::iostreams::counter;
 
     if (fmt.empty())
         return 0;
 
 #ifdef __GNUC__
-    struct VaListGuard
+    struct Guard
     {
         va_list *pva;
 
-        ~VaListGuard() {
+        ~Guard() {
             va_end(*pva);
         }
     };
 
     va_list va;
     va_copy(va, args);
-    auto _g_ = VaListGuard{ &va };
+    auto* pva = &va;
+    auto _vaptrguard_ = Guard{ pva };
 #else
-    auto va = args;
+    auto* pva = &args;
 #endif // __GNUC__
 
-    io::filtering_ostream os;
-    os.push(io::counter());
+    filtering_ostream os;
+    os.push(counter());
     os.push(stream);
     os.copyfmt(stream);
 
@@ -326,11 +326,12 @@ int red::polyloc::do_printf(string_view fmt, std::ostream& stream, va_list args)
                 ios_saver<char> _g_(os);
 
                 // prepare
-                apply_fwpr(os, fmtspec, &va);
+                apply_fwpr(os, fmtspec, pva);
                 apply_flags(os, fmtspec);
 
-                auto value = extract_value(fmtspec, &va);
-                if (!wconv && std::holds_alternative<wchar_t>(value) || std::holds_alternative<wchar_t*>(value)) {
+                auto value = extract_value(fmtspec, pva);
+                ;
+                if (!wconv && value.index() == 1 || value.index() == 3) {
                     wconv.reset(new wconverter(new cvt_t(os.getloc().name())));
                 }
 
@@ -343,7 +344,7 @@ int red::polyloc::do_printf(string_view fmt, std::ostream& stream, va_list args)
         }
     }
 
-    return os.component<io::counter>(0)->characters();
+    return os.component<counter>(0)->characters();
 }
 
 
