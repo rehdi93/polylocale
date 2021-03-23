@@ -97,7 +97,7 @@ fmtspec_t parsefmt(string_view spec)
         "(h|hh|l|ll|j|z|t|L|I32|I64)?" // length mod
         "([" FMT_TYPE "])"; // types
 
-    enum match_groups : size_t {
+    enum mgroups {
         FullMatch,
         Flags, FieldWidth, Precision, LengthMod, Type
     };
@@ -260,7 +260,7 @@ fmtspec_t parsefmt(string_view spec)
             }
         }
         if (matches[Precision].matched) {
-            auto ptr = start + matches.position(Precision) + 1 /* skip '.' */;
+            auto ptr = start + matches.position(Precision) + 1; /* skip '.' */
 
             if (*ptr == FMT_VA) {
                 fmtspec.precision = fmtspec.VAL_VA;
