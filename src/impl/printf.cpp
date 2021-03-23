@@ -310,8 +310,7 @@ int red::polyloc::do_printf(std::string_view fmt, std::ostream& stream, va_list 
 
     std::unique_ptr<wconverter> wconv;
 
-    auto fmtstr = std::string(fmt);
-    fmt_tokenizer toknz{ fmtstr };
+    fmt_tokenizer toknz{ fmt };
 
     for (auto& tok : toknz)
     {

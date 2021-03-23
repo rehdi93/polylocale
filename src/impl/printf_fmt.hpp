@@ -7,8 +7,8 @@ namespace red::polyloc
 {
     struct fmt_separator
     {
-        using token_type = std::string;
-        using iterator = std::string::const_iterator;
+        using token_type = std::string_view;
+        using iterator = std::string_view::const_iterator;
 
         bool operator() (iterator& next, iterator end, token_type& token);
         void reset() {}
@@ -29,16 +29,14 @@ namespace red::polyloc
         pointer
     };
 
-    namespace moreflags {
-        enum Enum
-        {
-            altform =   0b00001,
-            zerofill =  0b00010,
-            blankpos =  0b00100,
-            narrow =    0b01000,
-            wide =      0b10000
-        };
-    }
+    namespace moreflags { enum Enum
+    {
+        altform =   0b00001,
+        zerofill =  0b00010,
+        blankpos =  0b00100,
+        narrow =    0b01000,
+        wide =      0b10000
+    };}
 
     // %[flags][width][.precision][size]type
     struct fmtspec_t
@@ -60,3 +58,15 @@ namespace red::polyloc
 
     fmtspec_t parsefmt(std::string_view spec);
 }
+
+// assign_or_plus_equal specialization for string_view
+// https://github.com/boostorg/tokenizer/issues/15
+template<>
+struct boost::tokenizer_detail::assign_or_plus_equal<std::random_access_iterator_tag>
+{
+    template<class Iterator, typename char_t>
+    static void assign(Iterator b, Iterator e, std::basic_string_view<char_t>& t)
+    {
+        t = { std::addressof(*b), static_cast<size_t>(std::distance(b, e)) };
+    }
+};

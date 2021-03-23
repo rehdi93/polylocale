@@ -49,6 +49,14 @@ static long svtol(StrView sv, size_t* pos = 0, int base = 10)
     return val;
 }
 
+template<class Iterator, typename char_t>
+static void assign_sv(Iterator b, Iterator e, std::basic_string_view<char_t>& t)
+{
+    //t = { std::addressof(*b), static_cast<size_t>(std::distance(b, e)) };
+    using boost::tokenizer_detail::assign_or_plus_equal;
+    assign_or_plus_equal<std::random_access_iterator_tag>::assign(b, e, t);
+}
+
 namespace red::polyloc {
 
 bool fmt_separator::operator() (iterator& next, iterator end, token_type& token) {
@@ -63,7 +71,8 @@ bool fmt_separator::operator() (iterator& next, iterator end, token_type& token)
 
         if (*std::next(start) == FMT_START) {
             // escaped %
-            token.assign(1, FMT_START);
+            //token.assign(1, FMT_START);
+            token = "%";
             next += 2;
             return true;
         }
@@ -72,14 +81,16 @@ bool fmt_separator::operator() (iterator& next, iterator end, token_type& token)
             // "%# +o| %#o" "%10.5d|:%10.5d"
             auto fmtend = find_if(next, end, [](char ch) { return isCharOneOf(ch, FMT_TYPE); });
             next = fmtend != end ? fmtend + 1 : end;
-            token.assign(start, next);
+            //token.assign(start, next);
+            assign_sv(start, next, token);
             return true;
         }
     }
     else
     {
         next = find(start, end, FMT_START);
-        token.assign(start, next);
+        //token.assign(start, next);
+        assign_sv(start, next, token);
         return true;
     }
 }
@@ -255,7 +266,7 @@ fmtspec_t parsefmt(string_view spec)
                 auto num = string_view(ptr, matches.length(FieldWidth));
                 fmtspec.field_width = svtol(num);
             }
-            catch (const std::exception&) {
+            catch (const std::exception& e) {
                 // no conversion took place
             }
         }
@@ -269,7 +280,7 @@ fmtspec_t parsefmt(string_view spec)
                 auto num = string_view(ptr, matches.length(Precision));
                 fmtspec.precision = svtol(num);
             }
-            catch (const std::exception&) {
+            catch (const std::exception& e) {
                 // no conversion took place
             }
         }
