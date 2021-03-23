@@ -57,7 +57,7 @@ static void assign_sv(Iterator b, Iterator e, std::basic_string_view<char_t>& t)
     assign_or_plus_equal<std::random_access_iterator_tag>::assign(b, e, t);
 }
 
-namespace red::polyloc {
+namespace polyloc {
 
 bool fmt_separator::operator() (iterator& next, iterator end, token_type& token) {
     auto start = next;
@@ -289,4 +289,4 @@ fmtspec_t parsefmt(string_view spec)
     return fmtspec;
 }
 
-} // red::polyloc
+} // polyloc

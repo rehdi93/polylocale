@@ -7,7 +7,7 @@
 #include <string_view>
 
 
-namespace red { namespace polyloc {
+namespace polyloc {
 
 int do_printf(std::string_view format, std::ostream& outs, va_list args);
 
@@ -21,4 +21,4 @@ auto do_printf(std::string_view format, std::ostream& outs, size_t max, va_list 
 
 auto do_printf(std::string_view format, std::ostream& outs, size_t max, const std::locale& loc, va_list va)->std::pair<int, int>;
 
-}} // red::polyloc
+} // polyloc
