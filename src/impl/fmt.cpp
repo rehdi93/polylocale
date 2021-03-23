@@ -7,10 +7,46 @@
 
 #include "fmtdefs.h"
 
-using red::string_view; using std::string;
+using std::string_view; using std::string;
 
 static constexpr bool isCharOneOf(char ch, string_view group) {
     return group.find(ch) != string::npos;
+}
+
+template<class Char>
+static constexpr bool isCharGroup(Char ch, std::basic_string_view<Char> group) {
+    return group.find(ch) != string::npos;
+}
+
+// string_view to long
+template <class StrView>
+static long svtol(StrView sv, size_t* pos = 0, int base = 10)
+{
+    using charT = typename StrView::value_type;
+
+    charT* pend;
+    auto pbeg = sv.data();
+    long val;
+
+    if constexpr (std::is_same_v<charT, char>) {
+        val = strtol(pbeg, &pend, base);
+    }
+    else {
+        val = wcstol(pbeg, &pend, base);
+    }
+
+    if (pbeg == pend) {
+        throw std::invalid_argument("invalid svtol argument");
+    }
+    if (errno == ERANGE) {
+        throw std::out_of_range("svtol argument out of range");
+    }
+
+    if (pos) {
+        *pos = pend - pbeg;
+    }
+
+    return val;
 }
 
 namespace red::polyloc {
@@ -48,7 +84,6 @@ bool fmt_separator::operator() (iterator& next, iterator end, token_type& token)
     }
 }
 
-
 fmtspec_t parsefmt(string_view spec)
 {
     using namespace std::literals;
@@ -59,7 +94,7 @@ fmtspec_t parsefmt(string_view spec)
         "([" FMT_FLAGS "]+)?" // flags
         "(" R"([0-9]+|\*)" ")?" // field width
         "(" R"(\.[0-9]+|\.\*)" ")?" // precision
-        "(" "h|hh|l|ll|j|z|t|L|I32|I64" ")?" // length mod
+        "(h|hh|l|ll|j|z|t|L|I32|I64)?" // length mod
         "([" FMT_TYPE "])"; // types
 
     enum match_groups : size_t {
