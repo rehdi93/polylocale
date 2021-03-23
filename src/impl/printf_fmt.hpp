@@ -41,7 +41,7 @@ namespace polyloc
     // %[flags][width][.precision][size]type
     struct fmtspec_t
     {
-        static const int VAL_VA = -2, VAL_AUTO = -1;
+        enum special_values { VAL_VA = -2, VAL_AUTO };
         
         // the full format specefier
         std::string_view fmt;

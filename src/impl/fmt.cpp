@@ -9,13 +9,13 @@
 
 using std::string_view; using std::string;
 
-static constexpr bool isCharOneOf(char ch, string_view group) {
+template<class Char>
+static constexpr bool isCharIn(Char ch, std::basic_string_view<Char> group) {
     return group.find(ch) != string::npos;
 }
-
-template<class Char>
-static constexpr bool isCharGroup(Char ch, std::basic_string_view<Char> group) {
-    return group.find(ch) != string::npos;
+template<class Char, size_t N>
+static constexpr bool isCharIn(Char ch, const Char(&lit)[N]) {
+    return isCharIn(ch, std::basic_string_view<Char>(lit, N));
 }
 
 // string_view to long
@@ -52,9 +52,7 @@ static long svtol(StrView sv, size_t* pos = 0, int base = 10)
 template<class Iterator, typename char_t>
 static void assign_sv(Iterator b, Iterator e, std::basic_string_view<char_t>& t)
 {
-    //t = { std::addressof(*b), static_cast<size_t>(std::distance(b, e)) };
-    using boost::tokenizer_detail::assign_or_plus_equal;
-    assign_or_plus_equal<std::random_access_iterator_tag>::assign(b, e, t);
+    t = { std::addressof(*b), static_cast<size_t>(std::distance(b, e)) };
 }
 
 namespace polyloc {
@@ -79,7 +77,7 @@ bool fmt_separator::operator() (iterator& next, iterator end, token_type& token)
         else {
             // possible printf fmt
             // "%# +o| %#o" "%10.5d|:%10.5d"
-            auto fmtend = find_if(next, end, [](char ch) { return isCharOneOf(ch, FMT_TYPE); });
+            auto fmtend = find_if(next, end, [](char ch) { return isCharIn(ch, FMT_TYPE); });
             next = fmtend != end ? fmtend + 1 : end;
             //token.assign(start, next);
             assign_sv(start, next, token);
@@ -150,7 +148,7 @@ fmtspec_t parsefmt(string_view spec)
         else if (isType(FMT_FLOATING_PT)) { // floating point
             fmtspec.type = ft::floatpt;
         }
-        else if (typech == 'p') {
+        else if (isType(FMT_POINTER)) {
             fmtspec.type = ft::pointer;
         }
 
@@ -266,7 +264,7 @@ fmtspec_t parsefmt(string_view spec)
                 auto num = string_view(ptr, matches.length(FieldWidth));
                 fmtspec.field_width = svtol(num);
             }
-            catch (const std::exception& e) {
+            catch (const std::exception&) {
                 // no conversion took place
             }
         }
@@ -280,7 +278,7 @@ fmtspec_t parsefmt(string_view spec)
                 auto num = string_view(ptr, matches.length(Precision));
                 fmtspec.precision = svtol(num);
             }
-            catch (const std::exception& e) {
+            catch (const std::exception&) {
                 // no conversion took place
             }
         }
