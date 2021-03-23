@@ -57,7 +57,7 @@ static void assign_sv(Iterator b, Iterator e, std::basic_string_view<char_t>& t)
 
 namespace polyloc {
 
-bool fmt_separator::operator() (iterator& next, iterator end, token_type& token) {
+bool fmt_separator::operator() (iterator& next, iterator end, token_t& token) {
     auto start = next;
     if (start == end)
         return false;
@@ -69,7 +69,6 @@ bool fmt_separator::operator() (iterator& next, iterator end, token_type& token)
 
         if (*std::next(start) == FMT_START) {
             // escaped %
-            //token.assign(1, FMT_START);
             token = "%";
             next += 2;
             return true;
@@ -77,9 +76,9 @@ bool fmt_separator::operator() (iterator& next, iterator end, token_type& token)
         else {
             // possible printf fmt
             // "%# +o| %#o" "%10.5d|:%10.5d"
-            auto fmtend = find_if(next, end, [](char ch) { return isCharIn(ch, FMT_TYPE); });
-            next = fmtend != end ? fmtend + 1 : end;
-            //token.assign(start, next);
+            // %[flags][width][.precision][size]type
+            auto typeCh = find_if(next, end, [](char ch) { return isCharIn(ch, FMT_TYPE); });
+            next = typeCh != end ? typeCh + 1 : end;
             assign_sv(start, next, token);
             return true;
         }
@@ -87,7 +86,6 @@ bool fmt_separator::operator() (iterator& next, iterator end, token_type& token)
     else
     {
         next = find(start, end, FMT_START);
-        //token.assign(start, next);
         assign_sv(start, next, token);
         return true;
     }
@@ -285,6 +283,6 @@ fmtspec_t parsefmt(string_view spec)
     }
 
     return fmtspec;
-}
+    }
 
 } // polyloc

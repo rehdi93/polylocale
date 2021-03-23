@@ -7,16 +7,16 @@ namespace polyloc
 {
     struct fmt_separator
     {
-        using token_type = std::string_view;
+        using token_t = std::string_view;
         using iterator = std::string_view::const_iterator;
 
-        bool operator() (iterator& next, iterator end, token_type& token);
+        bool operator() (iterator& next, iterator end, token_t& token);
         void reset() {}
 
     private:
     };
 
-    using fmt_tokenizer = boost::tokenizer<fmt_separator, fmt_separator::iterator, fmt_separator::token_type>;
+    using fmt_tokenizer = boost::tokenizer<fmt_separator, fmt_separator::iterator, fmt_separator::token_t>;
 
     enum class fmttype
     {

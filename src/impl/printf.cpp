@@ -314,31 +314,29 @@ int polyloc::do_printf(std::string_view fmt, std::ostream& stream, va_list args)
 
     for (auto& tok : toknz)
     {
-        if (tok.size() >= 2 && tok[0] == FMT_START)
-        {
-            auto fmtspec = parsefmt(tok);
-            if (!fmtspec) {
-                // invalid format
-                os << fmtspec.fmt.substr(1);
+        auto fmtspec = parsefmt(tok);
+        if (fmtspec) {
+            ios_saver<char> _g_(os);
+
+            // prepare
+            apply_fwpr(os, fmtspec, pva);
+            apply_flags(os, fmtspec);
+            // get value
+            auto value = extract_value(fmtspec, pva);
+
+            if (!wconv && value.index() == 1 || value.index() == 3) {
+                wconv.reset(new wconverter(new cvt_t(os.getloc().name())));
             }
-            else {
-                ios_saver<char> _g_(os);
 
-                // prepare
-                apply_fwpr(os, fmtspec, pva);
-                apply_flags(os, fmtspec);
-                // get value
-                auto value = extract_value(fmtspec, pva);
-
-                if (!wconv && value.index() == 1 || value.index() == 3) {
-                    wconv.reset(new wconverter(new cvt_t(os.getloc().name())));
-                }
-
-                put(os, value, fmtspec, wconv.get());
-            }
+            put(os, value, fmtspec, wconv.get());
         }
-        else
-        {
+        else if (tok.size() > 1 && tok[0] == FMT_START) {
+            // invalid specifier
+            os << tok.substr(1);
+            //auto _ = va_arg(args, intmax_t);
+        }
+        else {
+            // some other text
             os << tok;
         }
     }
