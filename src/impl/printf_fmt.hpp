@@ -5,11 +5,6 @@
 
 namespace red::polyloc
 {
-    bool isfmtflag(char ch) noexcept;
-    bool isfmttype(char ch) noexcept;
-    bool isfmtlength(char ch) noexcept;
-    bool isfmtchar(char ch) noexcept;
-
     struct fmt_separator
     {
         using token_type = std::string;

@@ -9,38 +9,11 @@
 
 using red::string_view; using std::string;
 
-//template<class Iter, typename Ch>
-//static void assign_sv(Iter b, Iter e, red::basic_string_view<Ch>& sv) {
-//    sv = { std::addressof(*b), static_cast<size_t>(std::distance(b,e)) };
-//}
-
-namespace red::polyloc {
-
 static constexpr bool isCharOneOf(char ch, string_view group) {
     return group.find(ch) != string::npos;
 }
 
-bool isfmtflag(char ch) noexcept
-{
-    return isCharOneOf(ch, FMT_FLAGS);
-}
-
-bool isfmttype(char ch) noexcept
-{
-    return isCharOneOf(ch, FMT_TYPE);
-}
-
-bool isfmtlength(char ch) noexcept
-{
-    return isCharOneOf(ch, FMT_LENGTHMOD);
-}
-
-bool isfmtchar(char ch) noexcept
-{
-    return isCharOneOf(ch, FMT_SPECIAL FMT_TYPE FMT_FLAGS FMT_LENGTHMOD) 
-        || isdigit(ch, std::locale::classic());
-}
-
+namespace red::polyloc {
 
 bool fmt_separator::operator() (iterator& next, iterator end, token_type& token) {
     auto start = next;
@@ -61,7 +34,7 @@ bool fmt_separator::operator() (iterator& next, iterator end, token_type& token)
         else {
             // possible printf fmt
             // "%# +o| %#o" "%10.5d|:%10.5d"
-            auto fmtend = find_if(next, end, isfmttype);
+            auto fmtend = find_if(next, end, [](char ch) { return isCharOneOf(ch, FMT_TYPE); });
             next = fmtend != end ? fmtend + 1 : end;
             token.assign(start, next);
             return true;
