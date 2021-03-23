@@ -1,6 +1,6 @@
 #pragma once
 
-#include "polyimpl.h"
+#include "strview.h"
 #include <boost/tokenizer.hpp>
 
 namespace polyloc
@@ -46,7 +46,7 @@ namespace polyloc
         static const int VAL_VA = -2, VAL_AUTO = -1;
         
         // the full format specefier
-        red::string_view fmt;
+        string_view fmt;
         
         // values
         int field_width = VAL_AUTO, precision = VAL_AUTO;
@@ -58,5 +58,5 @@ namespace polyloc
         }
     };
 
-    fmtspec_t parsefmt(red::string_view spec);
+    fmtspec_t parsefmt(string_view spec);
 }

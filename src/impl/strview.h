@@ -7,10 +7,8 @@
     #include "boost/utility/string_view.hpp"
 #endif
 
-
-namespace red
+namespace polyloc
 {
-
 #if __cplusplus >= 201700L
     using std::string_view;
     using std::wstring_view;
@@ -20,7 +18,6 @@ namespace red
     using boost::wstring_view;
     using boost::basic_string_view;
 #endif
-
 
     // string_view to long
     template <class StrView>
@@ -52,5 +49,4 @@ namespace red
 
         return val;
     }
-
 }

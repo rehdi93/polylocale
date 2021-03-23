@@ -13,9 +13,7 @@
 #define CATCH_CONFIG_RUNNER
 #include "catch.hpp"
 
-#include "impl/polyimpl.h"
-
-using red::string_view;
+using std::string_view;
 using std::string;
 
 #ifdef POLYLOC_UNDECORATED

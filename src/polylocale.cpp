@@ -9,7 +9,6 @@
 
 #include "polylocale.h"
 #include "impl/printf.hpp"
-#include "impl/polyimpl.h"
 #include <boost/iostreams/stream_buffer.hpp>
 #include <boost/iostreams/device/array.hpp>
 
