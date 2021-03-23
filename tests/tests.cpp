@@ -13,8 +13,9 @@
 #define CATCH_CONFIG_RUNNER
 #include "catch.hpp"
 
+#include "impl/polyimpl.h"
 
-using std::string_view;
+using red::string_view;
 using std::string;
 
 #ifdef POLYLOC_UNDECORATED
@@ -75,7 +76,7 @@ static auto find_num_locale(char dp) -> std::string
         }
         catch (const std::exception& e)
         {
-            clog << e.what() << '\n';
+            clog << __func__ << ": " << std::quoted(name) << ", " << e.what() << "\n";
         }
     }
 
@@ -457,3 +458,15 @@ TEST_CASE("printf tests")
     REQUIRE(result == expected.size());
     REQUIRE(local.str() == expected);
 }
+
+#ifdef WIN32
+TEST_CASE("UTF-8 codepage works with setlocale")
+{
+    auto* locale_arg = ".UTF8";
+    auto* locale_name = ::setlocale(LC_ALL, locale_arg);
+
+    CAPTURE(locale_arg);
+    REQUIRE(locale_name != nullptr);
+    ::setlocale(LC_ALL, "C");
+}
+#endif

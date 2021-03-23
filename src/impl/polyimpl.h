@@ -11,7 +11,7 @@
 namespace red
 {
 
-#if __cplusplus >= 201703L
+#if __cplusplus >= 201700L
     using std::string_view;
     using std::wstring_view;
     using std::basic_string_view;

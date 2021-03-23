@@ -7,13 +7,13 @@
 
 #include "fmtdefs.h"
 
-using red::string_view; using std::string;
+using std::string;
+
+namespace polyloc {
 
 static constexpr bool isCharOneOf(char ch, string_view group) {
     return group.find(ch) != string::npos;
 }
-
-namespace red::polyloc {
 
 bool fmt_separator::operator() (iterator& next, iterator end, token_type& token) {
     auto start = next;

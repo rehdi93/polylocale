@@ -3,7 +3,7 @@
 #include "polyimpl.h"
 #include <boost/tokenizer.hpp>
 
-namespace red::polyloc
+namespace polyloc
 {
     struct fmt_separator
     {

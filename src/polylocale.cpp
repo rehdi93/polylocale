@@ -211,7 +211,7 @@ int poly_vprintf_l(const char* fmt, poly_locale_t locale, va_list args)
 {
     try
     {
-        return red::polyloc::do_printf(fmt, std::cout, cpploc(locale), args);
+        return polyloc::do_printf(fmt, std::cout, cpploc(locale), args);
     }
     catch (std::exception&)
     {
@@ -238,7 +238,7 @@ int poly_vsprintf_l(char* buffer, const char* fmt, poly_locale_t loc, va_list ar
     {
         unsafe_buf sink{ buffer };
         std::ostream os(&sink);
-        auto result = red::polyloc::do_printf(fmt, os, cpploc(loc), args);
+        auto result = polyloc::do_printf(fmt, os, cpploc(loc), args);
         os.put('\0');
         return result;
     }
@@ -266,7 +266,7 @@ int poly_vsnprintf_l(char* buffer, size_t count, const char* fmt, poly_locale_t 
     {
         array_buf outputBuf(buffer, count);
         std::ostream outs(&outputBuf);
-        auto result = red::polyloc::do_printf(fmt, outs, count, cpploc(ploc), args);
+        auto result = polyloc::do_printf(fmt, outs, count, cpploc(ploc), args);
         outs.put('\0');
         return result.first;
     }
@@ -298,15 +298,15 @@ int poly_vfprintf_l(FILE* cfile, const char* fmt, poly_locale_t loc, va_list arg
         // convert FILE* to ostream
 #if defined(_MSC_VER)
         auto outs = std::ofstream(cfile);
-        result = red::polyloc::do_printf(fmt, outs, cpploc(loc), args);
+        result = polyloc::do_printf(fmt, outs, cpploc(loc), args);
 #elif defined(__GNUC__)
         __gnu_cxx::stdio_filebuf<char> fbuf{ cfile, std::ios::out };
         std::ostream outs{ &fbuf };
-        result = red::polyloc::do_printf(fmt, outs, cpploc(loc), args);
+        result = polyloc::do_printf(fmt, outs, cpploc(loc), args);
 #else
     // Fallback
         std::ostringstream outs;
-        red::polyloc::do_printf(fmt, outs, cpploc(loc), args);
+        polyloc::do_printf(fmt, outs, cpploc(loc), args);
         auto contents = outs.str();
         result = std::fputs(contents.c_str(), cfile);
         if (result != EOF) {

@@ -28,7 +28,7 @@
 
 
 using std::ios;
-using red::polyloc::fmtspec_t;
+using polyloc::fmtspec_t;
 using namespace std::literals;
 
 // HELPERS
@@ -70,7 +70,7 @@ using arg_variant = std::variant<char, wchar_t, char*, wchar_t*, void*, int64_t,
 
 void apply_flags(std::ostream& os, fmtspec_t& fmts)
 {
-    using namespace red::polyloc;
+    using namespace polyloc;
 
     auto oldflags = os.flags(fmts.iosflags);
 
@@ -110,8 +110,8 @@ void apply_fwpr(std::ostream& os, fmtspec_t& fmts, va_list* pva)
 
 auto extract_value(fmtspec_t const& fmts, va_list* pva)
 {
-    using ft = red::polyloc::fmttype;
-    using mf = red::polyloc::moreflags::Enum;
+    using ft = polyloc::fmttype;
+    using mf = polyloc::moreflags::Enum;
     arg_variant val;
 
     bool wideflag = (fmts.moreflags & mf::wide) != 0;
@@ -173,7 +173,7 @@ auto extract_value(fmtspec_t const& fmts, va_list* pva)
 
 void put_fp(long double number, fmtspec_t const& fmts, std::ostream& os)
 {
-    using mf = red::polyloc::moreflags::Enum;
+    using mf = polyloc::moreflags::Enum;
 
     if ((fmts.moreflags & mf::blankpos) != 0 && number >= 0)
         os.put(' ');
@@ -270,14 +270,14 @@ void put(std::ostream& os, arg_variant const& value, fmtspec_t const& fmts, wcon
 } // unnamed
 
 
-int red::polyloc::do_printf(string_view format, std::ostream& outs, const std::locale& loc, va_list args)
+int polyloc::do_printf(red::string_view format, std::ostream& outs, const std::locale& loc, va_list args)
 {
     boost::io::ios_locale_saver _s_{ outs };
     outs.imbue(loc);
     return do_printf(format, outs, args);
 }
 
-int red::polyloc::do_printf(string_view fmt, std::ostream& stream, va_list args)
+int polyloc::do_printf(red::string_view fmt, std::ostream& stream, va_list args)
 {
     using boost::iostreams::filtering_ostream;
     using boost::iostreams::counter;
@@ -348,7 +348,7 @@ int red::polyloc::do_printf(string_view fmt, std::ostream& stream, va_list args)
 }
 
 
-auto red::polyloc::do_printf(string_view format, std::ostream& outs, size_t max, va_list va) -> std::pair<int, int>
+auto polyloc::do_printf(red::string_view format, std::ostream& outs, size_t max, va_list va) -> std::pair<int, int>
 {
     std::pair<int, int> ret;
     std::ostringstream tmp;
@@ -367,7 +367,7 @@ auto red::polyloc::do_printf(string_view format, std::ostream& outs, size_t max,
     else
     {
         auto str = tmp.str();
-        auto to_be_writen = string_view(str).substr(0, max - 1);
+        auto to_be_writen = red::string_view(str).substr(0, max - 1);
         ret.second = to_be_writen.size();
         outs << to_be_writen;
     }
@@ -375,7 +375,7 @@ auto red::polyloc::do_printf(string_view format, std::ostream& outs, size_t max,
     return ret;
 }
 
-auto red::polyloc::do_printf(string_view format, std::ostream& outs, size_t max, const std::locale& loc, va_list args) -> std::pair<int, int>
+auto polyloc::do_printf(red::string_view format, std::ostream& outs, size_t max, const std::locale& loc, va_list args) -> std::pair<int, int>
 {
     boost::io::ios_locale_saver _s_{ outs };
     outs.imbue(loc);
