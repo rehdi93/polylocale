@@ -333,7 +333,6 @@ int polyloc::do_printf(std::string_view fmt, std::ostream& stream, va_list args)
         else if (tok.size() > 1 && tok[0] == FMT_START) {
             // invalid specifier
             os << tok.substr(1);
-            //auto _ = va_arg(args, intmax_t);
         }
         else {
             // some other text

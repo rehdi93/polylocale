@@ -96,11 +96,11 @@ fmtspec_t parsefmt(string_view spec)
     using namespace std::literals;
 
     // format specifier regex
-    // https://regex101.com/r/Imw6fT/3
+    // https://regex101.com/r/Imw6fT/4
     constexpr char Pattern[] = "%"
         "([" FMT_FLAGS "]+)?" // flags
-        "(" R"([0-9]+|\*)" ")?" // field width
-        "(" R"(\.[0-9]+|\.\*)" ")?" // precision
+        "(" R"(\d+|\*)" ")?" // field width
+        "(" R"(\.\d+|\.\*)" ")?" // precision
         "(h|hh|l|ll|j|z|t|L|I32|I64)?" // length mod
         "([" FMT_TYPE "])"; // types
 

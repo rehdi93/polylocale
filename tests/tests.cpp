@@ -271,7 +271,6 @@ TEST_CASE("sprintf_l tests", "[sprintf]")
 
         fmt_test("bad fmt:  -.3M", "bad fmt: % -.3M", 321.1);
         fmt_test("bad fmt:  -.3M some other text", "bad fmt: % -.3M some other text", 321.1);
-        //fmt_test("bad fmt:  -.3M some text a valid format!", "bad fmt: % -.3M some text a %s format%c", 321.1, "valid", '!');
         fmt_test("a b     1", "%c %s     %d", 'a', "b", 1);
         fmt_test("abc     ", "%-8.3s", "abcdefgh");
     }
