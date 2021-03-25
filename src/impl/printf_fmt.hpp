@@ -1,22 +1,22 @@
 #pragma once
 
-#include "strview.h"
+#include <string_view>
 #include <boost/tokenizer.hpp>
 
 namespace polyloc
 {
     struct fmt_separator
     {
-        using token_type = std::string;
-        using iterator = std::string::const_iterator;
+        using token_t = std::string_view;
+        using iterator = std::string_view::const_iterator;
 
-        bool operator() (iterator& next, iterator end, token_type& token);
+        bool operator() (iterator& next, iterator end, token_t& token);
         void reset() {}
 
     private:
     };
 
-    using fmt_tokenizer = boost::tokenizer<fmt_separator, fmt_separator::iterator, fmt_separator::token_type>;
+    using fmt_tokenizer = boost::tokenizer<fmt_separator, fmt_separator::iterator, fmt_separator::token_t>;
 
     enum class fmttype
     {
@@ -29,24 +29,22 @@ namespace polyloc
         pointer
     };
 
-    namespace moreflags {
-        enum Enum
-        {
-            altform =   0b00001,
-            zerofill =  0b00010,
-            blankpos =  0b00100,
-            narrow =    0b01000,
-            wide =      0b10000
-        };
-    }
+    namespace moreflags { enum Enum
+    {
+        altform =   0b00001,
+        zerofill =  0b00010,
+        blankpos =  0b00100,
+        narrow =    0b01000,
+        wide =      0b10000
+    };}
 
     // %[flags][width][.precision][size]type
     struct fmtspec_t
     {
-        static const int VAL_VA = -2, VAL_AUTO = -1;
+        enum special_values { VAL_VA = -2, VAL_AUTO };
         
         // the full format specefier
-        string_view fmt;
+        std::string_view fmt;
         
         // values
         int field_width = VAL_AUTO, precision = VAL_AUTO;
@@ -58,5 +56,17 @@ namespace polyloc
         }
     };
 
-    fmtspec_t parsefmt(string_view spec);
+    fmtspec_t parsefmt(std::string_view spec);
 }
+
+// assign_or_plus_equal specialization for string_view
+// https://github.com/boostorg/tokenizer/issues/15
+template<>
+struct boost::tokenizer_detail::assign_or_plus_equal<std::random_access_iterator_tag>
+{
+    template<class Iterator, typename char_t>
+    static void assign(Iterator b, Iterator e, std::basic_string_view<char_t>& t)
+    {
+        t = { std::addressof(*b), static_cast<size_t>(std::distance(b, e)) };
+    }
+};

@@ -40,7 +40,7 @@ int poly_fprintf_l(FILE* cfile, const char* fmt, poly_locale_t locale, ...);
 int poly_vfprintf_l(FILE* cfile, const char* fmt, poly_locale_t locale, va_list args);
 
 // polyloc specific
-const char* polyloc_getname(poly_locale_t l);
+const char* poly_getname(poly_locale_t l);
 
 
 enum poly_lc_masks

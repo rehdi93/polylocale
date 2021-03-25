@@ -29,7 +29,6 @@
 
 using std::ios;
 using polyloc::fmtspec_t;
-using polyloc::string_view; using polyloc::wstring_view;
 using namespace std::literals;
 
 // HELPERS
@@ -64,9 +63,6 @@ private:
     boost::io::ios_base_all_saver m_wpfsaver;
     boost::io::basic_ios_fill_saver<Ch, Tr> m_fillsaver;
 };
-
-
-using arg_variant = std::variant<char, wchar_t, char*, wchar_t*, void*, int64_t, uint64_t, long double>;
 
 
 void apply_flags(std::ostream& os, fmtspec_t& fmts)
@@ -108,6 +104,8 @@ void apply_fwpr(std::ostream& os, fmtspec_t& fmts, va_list* pva)
     if (fmts.precision > fmts.VAL_AUTO)
         os.precision(fmts.precision);
 }
+
+using arg_variant = std::variant<char, wchar_t, char*, wchar_t*, void*, int64_t, uint64_t, long double>;
 
 auto extract_value(fmtspec_t const& fmts, va_list* pva)
 {
@@ -187,14 +185,14 @@ void put_fp(long double number, fmtspec_t const& fmts, std::ostream& os)
     os << number;
 }
 
-void put_str(string_view str, fmtspec_t const& fmts, std::ostream& os) {
+void put_str(std::string_view str, fmtspec_t const& fmts, std::ostream& os) {
     if (fmts.precision > 0)
         os << str.substr(0, fmts.precision);
     else
         os << str;
 }
 
-void put_str(wstring_view str, fmtspec_t const& fmts, std::ostream& os, wconverter* wconv) {
+void put_str(std::wstring_view str, fmtspec_t const& fmts, std::ostream& os, wconverter* wconv) {
     assert(wconv && "wconv is null!");
     std::string tmp = wconv->to_bytes(str.data(), str.data() + str.size());
     put_str(tmp, fmts, os);
@@ -239,6 +237,7 @@ void put_int(T val, fmtspec_t const& fmts, std::ostream& os)
     os << val;
 }
 
+
 void put(std::ostream& os, arg_variant const& value, fmtspec_t const& fmts, wconverter* wconv) {
     using std::get_if;
 
@@ -271,14 +270,14 @@ void put(std::ostream& os, arg_variant const& value, fmtspec_t const& fmts, wcon
 } // unnamed
 
 
-int polyloc::do_printf(string_view format, std::ostream& outs, const std::locale& loc, va_list args)
+int polyloc::do_printf(std::string_view format, std::ostream& outs, const std::locale& loc, va_list args)
 {
     boost::io::ios_locale_saver _s_{ outs };
     outs.imbue(loc);
     return do_printf(format, outs, args);
 }
 
-int polyloc::do_printf(string_view fmt, std::ostream& stream, va_list args)
+int polyloc::do_printf(std::string_view fmt, std::ostream& stream, va_list args)
 {
     using boost::iostreams::filtering_ostream;
     using boost::iostreams::counter;
@@ -311,36 +310,32 @@ int polyloc::do_printf(string_view fmt, std::ostream& stream, va_list args)
 
     std::unique_ptr<wconverter> wconv;
 
-    auto fmtcopy = std::string(fmt);
-    fmt_tokenizer toknz{ fmtcopy };
+    fmt_tokenizer toknz{ fmt };
 
     for (auto& tok : toknz)
     {
-        if (tok.size() >= 2 && tok[0] == FMT_START)
-        {
-            auto fmtspec = parsefmt(tok);
-            if (!fmtspec) {
-                // invalid format
-                os << fmtspec.fmt.substr(1);
+        auto fmtspec = parsefmt(tok);
+        if (fmtspec) {
+            ios_saver<char> _g_(os);
+
+            // prepare
+            apply_fwpr(os, fmtspec, pva);
+            apply_flags(os, fmtspec);
+            // get value
+            auto value = extract_value(fmtspec, pva);
+
+            if (!wconv && value.index() == 1 || value.index() == 3) {
+                wconv.reset(new wconverter(new cvt_t(os.getloc().name())));
             }
-            else {
-                ios_saver<char> _g_(os);
 
-                // prepare
-                apply_fwpr(os, fmtspec, pva);
-                apply_flags(os, fmtspec);
-
-                auto value = extract_value(fmtspec, pva);
-                ;
-                if (!wconv && value.index() == 1 || value.index() == 3) {
-                    wconv.reset(new wconverter(new cvt_t(os.getloc().name())));
-                }
-
-                put(os, value, fmtspec, wconv.get());
-            }
+            put(os, value, fmtspec, wconv.get());
         }
-        else
-        {
+        else if (tok.size() > 1 && tok[0] == FMT_START) {
+            // invalid specifier
+            os << tok.substr(1);
+        }
+        else {
+            // some other text
             os << tok;
         }
     }
@@ -349,7 +344,7 @@ int polyloc::do_printf(string_view fmt, std::ostream& stream, va_list args)
 }
 
 
-auto polyloc::do_printf(string_view format, std::ostream& outs, size_t max, va_list va) -> std::pair<int, int>
+auto polyloc::do_printf(std::string_view format, std::ostream& outs, size_t max, va_list va) -> std::pair<int, int>
 {
     std::pair<int, int> ret;
     std::ostringstream tmp;
@@ -368,7 +363,7 @@ auto polyloc::do_printf(string_view format, std::ostream& outs, size_t max, va_l
     else
     {
         auto str = tmp.str();
-        auto to_be_writen = string_view(str).substr(0, max - 1);
+        auto to_be_writen = std::string_view(str).substr(0, max - 1);
         ret.second = to_be_writen.size();
         outs << to_be_writen;
     }
@@ -376,7 +371,7 @@ auto polyloc::do_printf(string_view format, std::ostream& outs, size_t max, va_l
     return ret;
 }
 
-auto polyloc::do_printf(string_view format, std::ostream& outs, size_t max, const std::locale& loc, va_list args) -> std::pair<int, int>
+auto polyloc::do_printf(std::string_view format, std::ostream& outs, size_t max, const std::locale& loc, va_list args) -> std::pair<int, int>
 {
     boost::io::ios_locale_saver _s_{ outs };
     outs.imbue(loc);

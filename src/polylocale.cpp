@@ -321,7 +321,7 @@ int poly_vfprintf_l(FILE* cfile, const char* fmt, poly_locale_t loc, va_list arg
     }
 }
 
-const char* polyloc_getname(poly_locale_t l)
+const char* poly_getname(poly_locale_t l)
 {
     return l->name.c_str();
 }
